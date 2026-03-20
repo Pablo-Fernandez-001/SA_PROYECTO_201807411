@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+  namespace: delivereats
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catalog-service
+  template:
+    metadata:
+      labels:
+        app: catalog-service
+    spec:
+      containers:
+      - name: catalog-service
+        image: gcr.io/PROJECT_ID/catalog-service:v1.1.0
+        ports:
+        - containerPort: 50052
+          name: grpc
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: NODE_ENV
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: PORT
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: MYSQL_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: MYSQL_PASSWORD
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: REDIS_PORT
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: RABBITMQ_HOST
+        - name: RABBITMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: RABBITMQ_PORT
+        - name: RABBITMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-credentials
+              key: RABBITMQ_DEFAULT_USER
+        - name: RABBITMQ_PASS
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-credentials
+              key: RABBITMQ_DEFAULT_PASS
+        - name: RABBITMQ_QUEUE
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: RABBITMQ_QUEUE
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "700m"
+        livenessProbe:
+          tcpSocket:
+            port: 50052
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 50052
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+  namespace: delivereats
+spec:
+  selector:
+    app: catalog-service
+  ports:
+  - protocol: TCP
+    port: 50052
+    targetPort: 50052
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: catalog-service-hpa
+  namespace: delivereats
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: catalog-service
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

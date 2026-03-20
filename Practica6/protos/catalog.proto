@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package catalog;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CatalogService - gRPC contract for order validation between
+// Order-Service (client) and Restaurant-Catalog-Service (server).
+//
+// Validates: existence, restaurant belongingness, price consistency,
+// and availability of menu items before order persistence.
+// ─────────────────────────────────────────────────────────────────────────────
+
+service CatalogService {
+  // Validates a list of order items against the catalog database.
+  // Called by Order-Service BEFORE persisting any order.
+  rpc ValidateOrderItems (ValidationRequest) returns (ValidationResponse);
+}
+
+// ─── Request Messages ────────────────────────────────────────────────────────
+
+// Represents a single item requested by the client
+message OrderItemRequest {
+  int32  menu_item_id     = 1;  // ID of the menu item in catalog DB
+  double requested_price  = 2;  // Price the client expects to pay
+  int32  quantity         = 3;  // Quantity requested
+}
+
+// Full validation request sent by Order-Service
+message ValidationRequest {
+  int32                     restaurant_id = 1;  // Restaurant that should own ALL items
+  repeated OrderItemRequest items         = 2;  // List of items to validate
+}
+
+// ─── Response Messages ───────────────────────────────────────────────────────
+
+// Per-item validation result
+message ItemValidationResult {
+  int32  menu_item_id          = 1;   // Echoed item ID
+  string item_name             = 2;   // Name of the item (from catalog)
+  bool   exists                = 3;   // Does the item exist?
+  bool   belongs_to_restaurant = 4;   // Does it belong to the requested restaurant?
+  bool   price_matches         = 5;   // Does the requested price match the current price?
+  bool   is_available          = 6;   // Is the item currently available?
+  double current_price         = 7;   // Current price in the catalog
+  double requested_price       = 8;   // Price sent in the request
+  string error_message         = 9;   // Human readable error (empty if valid)
+}
+
+// Full validation response
+message ValidationResponse {
+  bool                          valid              = 1;  // Overall validation result
+  string                        message            = 2;  // Summary message
+  repeated ItemValidationResult item_results       = 3;  // Per-item detail
+  double                        total_calculated   = 4;  // Server-calculated total
+  string                        restaurant_name    = 5;  // Name of the restaurant
+  string                        restaurant_address = 6;  // Address of the restaurant
+}
