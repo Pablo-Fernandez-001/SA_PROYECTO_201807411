@@ -15,11 +15,16 @@ spec:
     spec:
       containers:
       - name: api-gateway
-        image: gcr.io/PROJECT_ID/api-gateway:v1.1.0
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/api-gateway:v1.0
         ports:
         - containerPort: 3000
           name: http
         env:
+        - name: FRONTEND_URL
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: FRONTEND_URL
         - name: NODE_ENV
           valueFrom:
             configMapKeyRef:
@@ -87,7 +92,7 @@ spec:
   - protocol: TCP
     port: 80
     targetPort: 3000
-  type: ClusterIP
+  type: LoadBalancer
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

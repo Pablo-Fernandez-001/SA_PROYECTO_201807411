@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: orders-service
-        image: gcr.io/PROJECT_ID/orders-service:v1.1.0
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/orders-service:v1.0
         ports:
         - containerPort: 50053
           name: grpc
@@ -55,37 +55,22 @@ spec:
             secretKeyRef:
               name: database-credentials
               key: MYSQL_PASSWORD
-        - name: RABBITMQ_HOST
+        - name: REDIS_HOST
           valueFrom:
             configMapKeyRef:
-              name: orders-service-config
-              key: RABBITMQ_HOST
-        - name: RABBITMQ_PORT
+              name: catalog-service-config
+              key: REDIS_HOST
+        - name: RABBITMQ_URL
           valueFrom:
             configMapKeyRef:
-              name: orders-service-config
-              key: RABBITMQ_PORT
-        - name: RABBITMQ_USER
-          valueFrom:
-            secretKeyRef:
-              name: rabbitmq-credentials
-              key: RABBITMQ_DEFAULT_USER
-        - name: RABBITMQ_PASS
-          valueFrom:
-            secretKeyRef:
-              name: rabbitmq-credentials
-              key: RABBITMQ_DEFAULT_PASS
-        - name: RABBITMQ_QUEUE
-          valueFrom:
-            configMapKeyRef:
-              name: orders-service-config
-              key: RABBITMQ_QUEUE
-        - name: CATALOG_SERVICE_URL
+              name: catalog-service-config
+              key: RABBITMQ_URL
+        - name: CATALOG_GRPC_URL
           valueFrom:
             configMapKeyRef:
               name: orders-service-config
               key: CATALOG_SERVICE_URL
-        - name: AUTH_SERVICE_URL
+        - name: AUTH_GRPC_URL
           valueFrom:
             configMapKeyRef:
               name: orders-service-config

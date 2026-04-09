@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: notification-service
-        image: gcr.io/PROJECT_ID/notification-service:v1.1.0
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/notification-service:v1.0
         ports:
         - containerPort: 50055
           name: grpc

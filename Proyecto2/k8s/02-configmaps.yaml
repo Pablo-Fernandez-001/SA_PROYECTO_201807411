@@ -6,7 +6,7 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "50051"
-  DB_HOST: "auth-db-service"
+  DB_HOST: "34.55.4.23"
   DB_PORT: "3306"
   DB_NAME: "auth_db"
 ---
@@ -17,14 +17,13 @@ metadata:
   namespace: delivereats
 data:
   NODE_ENV: "production"
-  PORT: "50052"
-  DB_HOST: "catalog-db-service"
+  PORT: "3002"
+  DB_HOST: "34.55.4.23"
   DB_PORT: "3306"
   DB_NAME: "catalog_db"
-  REDIS_HOST: "redis-service"
+  REDIS_HOST: "redis"
   REDIS_PORT: "6379"
-  RABBITMQ_HOST: "rabbitmq-service"
-  RABBITMQ_PORT: "5672"
+  RABBITMQ_URL: "amqp://delivereats:rabbitmq2024@rabbitmq-service.delivereats.svc.cluster.local:5672/"
   RABBITMQ_QUEUE: "order_events"
 ---
 apiVersion: v1
@@ -35,11 +34,10 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "50053"
-  DB_HOST: "orders-db-service"
+  DB_HOST: "34.55.4.23"
   DB_PORT: "3306"
   DB_NAME: "orders_db"
-  RABBITMQ_HOST: "rabbitmq-service"
-  RABBITMQ_PORT: "5672"
+  RABBITMQ_URL: "amqp://delivereats:rabbitmq2024@rabbitmq-service.delivereats.svc.cluster.local:5672/"
   RABBITMQ_QUEUE: "order_events"
   CATALOG_SERVICE_URL: "catalog-service:50052"
   AUTH_SERVICE_URL: "auth-service:50051"
@@ -53,7 +51,7 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "50054"
-  DB_HOST: "delivery-db-service"
+  DB_HOST: "34.55.4.23"
   DB_PORT: "3306"
   DB_NAME: "delivery_db"
   ORDERS_SERVICE_URL: "orders-service:50053"
@@ -82,5 +80,6 @@ data:
   PORT: "3000"
   AUTH_SERVICE_URL: "auth-service:50051"
   CATALOG_SERVICE_URL: "catalog-service:50052"
-  ORDERS_SERVICE_URL: "orders-service:50053"
+  ORDERS_SERVICE_URL: "http://orders-service:50053"
   DELIVERY_SERVICE_URL: "delivery-service:50054"
+  FRONTEND_URL: "https://proyecto-iac-frontend-681870377764.us-central1.run.app"

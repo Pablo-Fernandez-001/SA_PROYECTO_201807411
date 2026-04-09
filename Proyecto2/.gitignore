@@ -33,3 +33,10 @@ Thumbs.db
 
 # Database
 *.sql.backup
+
+# Terraform
+.iac/terraform/
+**/.terraform/
+.terraform/
+*.tfstate
+*.tfstate.backup

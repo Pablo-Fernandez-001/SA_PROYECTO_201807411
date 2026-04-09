@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: auth-service
-        image: gcr.io/PROJECT_ID/auth-service:v1.1.0
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/auth-service:v1.0
         ports:
         - containerPort: 50051
           name: grpc

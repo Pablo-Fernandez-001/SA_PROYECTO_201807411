@@ -1,0 +1,194 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: helpdesk-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: helpdesk
+      RABBITMQ_DEFAULT_PASS: helpdesk123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - helpdesk-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  users-db:
+    image: mysql:8.0
+    container_name: helpdesk-users-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: users_db
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "3401:3306"
+    volumes:
+      - users_db_data:/var/lib/mysql
+      - ./db/users_db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - helpdesk-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 10s
+      timeout: 20s
+      retries: 10
+      start_period: 30s
+
+  tickets-db:
+    image: mysql:8.0
+    container_name: helpdesk-tickets-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: tickets_db
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "3402:3306"
+    volumes:
+      - tickets_db_data:/var/lib/mysql
+      - ./db/tickets_db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - helpdesk-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 10s
+      timeout: 20s
+      retries: 10
+      start_period: 30s
+
+  assignments-db:
+    image: mysql:8.0
+    container_name: helpdesk-assignments-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: assignments_db
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "3403:3306"
+    volumes:
+      - assignments_db_data:/var/lib/mysql
+      - ./db/assignments_db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - helpdesk-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 10s
+      timeout: 20s
+      retries: 10
+      start_period: 30s
+
+  users-service:
+    build:
+      context: ./users-service
+      dockerfile: Dockerfile
+    container_name: helpdesk-users-service
+    restart: unless-stopped
+    environment:
+      PORT: 3101
+      DB_HOST: users-db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: password
+      DB_NAME: users_db
+      EVENT_BUS_URL: amqp://helpdesk:helpdesk123@rabbitmq:5672
+      EVENT_BUS_ENABLED: "true"
+    ports:
+      - "3101:3101"
+    depends_on:
+      users-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - helpdesk-network
+
+  tickets-service:
+    build:
+      context: ./tickets-service
+      dockerfile: Dockerfile
+    container_name: helpdesk-tickets-service
+    restart: unless-stopped
+    environment:
+      PORT: 3102
+      DB_HOST: tickets-db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: password
+      DB_NAME: tickets_db
+      USERS_SERVICE_URL: http://users-service:3101
+      EVENT_BUS_URL: amqp://helpdesk:helpdesk123@rabbitmq:5672
+      EVENT_BUS_ENABLED: "true"
+    ports:
+      - "3102:3102"
+    depends_on:
+      tickets-db:
+        condition: service_healthy
+      users-service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - helpdesk-network
+
+  assignments-service:
+    build:
+      context: ./assignments-service
+      dockerfile: Dockerfile
+    container_name: helpdesk-assignments-service
+    restart: unless-stopped
+    environment:
+      PORT: 3103
+      DB_HOST: assignments-db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: password
+      DB_NAME: assignments_db
+      USERS_SERVICE_URL: http://users-service:3101
+      TICKETS_SERVICE_URL: http://tickets-service:3102
+      EVENT_BUS_URL: amqp://helpdesk:helpdesk123@rabbitmq:5672
+      EVENT_BUS_ENABLED: "true"
+    ports:
+      - "3103:3103"
+    depends_on:
+      assignments-db:
+        condition: service_healthy
+      users-service:
+        condition: service_started
+      tickets-service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - helpdesk-network
+
+  audit-service:
+    build:
+      context: ./audit-service
+      dockerfile: Dockerfile
+    container_name: helpdesk-audit-service
+    restart: unless-stopped
+    environment:
+      PORT: 3104
+      EVENT_BUS_URL: amqp://helpdesk:helpdesk123@rabbitmq:5672
+    ports:
+      - "3104:3104"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - helpdesk-network
+
+networks:
+  helpdesk-network:
+    driver: bridge
+
+volumes:
+  users_db_data:
+  tickets_db_data:
+  assignments_db_data:

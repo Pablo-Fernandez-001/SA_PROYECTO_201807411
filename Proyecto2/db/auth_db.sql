@@ -3,7 +3,6 @@
 -- DROP DATABASE auth_db;
 -- Note: In Docker, the database is already created by the MYSQL_DATABASE env variable
 USE auth_db;
-
 -- Drop tables if they exist to ensure clean setup
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS roles;

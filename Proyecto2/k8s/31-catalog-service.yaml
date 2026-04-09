@@ -13,18 +13,26 @@ spec:
       labels:
         app: catalog-service
     spec:
+      initContainers:
+      - name: wait-for-rabbitmq
+        image: busybox:1.28
+        command: ['sh', '-c', "until nc -zv rabbitmq-service 5672; do echo 'Esperando a RabbitMQ...'; sleep 2; done;"]
       containers:
       - name: catalog-service
-        image: gcr.io/PROJECT_ID/catalog-service:v1.1.0
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/catalog-service:v1.0
         ports:
         - containerPort: 50052
           name: grpc
+        - containerPort: 3002
+          name: http
         env:
         - name: NODE_ENV
           valueFrom:
             configMapKeyRef:
               name: catalog-service-config
               key: NODE_ENV
+        # Este puerto 'PORT' es el que causaba el choque. 
+        # Asegúrate que en el ConfigMap ahora valga "3001"
         - name: PORT
           valueFrom:
             configMapKeyRef:
@@ -60,36 +68,11 @@ spec:
             configMapKeyRef:
               name: catalog-service-config
               key: REDIS_HOST
-        - name: REDIS_PORT
+        - name: RABBITMQ_URL
           valueFrom:
             configMapKeyRef:
               name: catalog-service-config
-              key: REDIS_PORT
-        - name: RABBITMQ_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: catalog-service-config
-              key: RABBITMQ_HOST
-        - name: RABBITMQ_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: catalog-service-config
-              key: RABBITMQ_PORT
-        - name: RABBITMQ_USER
-          valueFrom:
-            secretKeyRef:
-              name: rabbitmq-credentials
-              key: RABBITMQ_DEFAULT_USER
-        - name: RABBITMQ_PASS
-          valueFrom:
-            secretKeyRef:
-              name: rabbitmq-credentials
-              key: RABBITMQ_DEFAULT_PASS
-        - name: RABBITMQ_QUEUE
-          valueFrom:
-            configMapKeyRef:
-              name: catalog-service-config
-              key: RABBITMQ_QUEUE
+              key: RABBITMQ_URL
         resources:
           requests:
             memory: "512Mi"
@@ -100,13 +83,13 @@ spec:
         livenessProbe:
           tcpSocket:
             port: 50052
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: 60 # Más tiempo para conectar a Rabbit/Redis
+          periodSeconds: 15
         readinessProbe:
           tcpSocket:
             port: 50052
-          initialDelaySeconds: 10
-          periodSeconds: 5
+          initialDelaySeconds: 30 # No acepta tráfico hasta estar conectado
+          periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
@@ -120,6 +103,11 @@ spec:
   - protocol: TCP
     port: 50052
     targetPort: 50052
+    name: grpc
+  - protocol: TCP
+    port: 3002
+    targetPort: 3002
+    name: http
   type: ClusterIP
 ---
 apiVersion: autoscaling/v2
@@ -141,9 +129,3 @@ spec:
       target:
         type: Utilization
         averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
