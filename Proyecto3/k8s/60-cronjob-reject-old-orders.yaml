@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reject-stale-orders
+  namespace: delivereats
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: reject-stale-orders
+              image: curlimages/curl:8.7.1
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: API_GATEWAY_URL
+                  valueFrom:
+                    configMapKeyRef:
+                      name: delivereats-config
+                      key: apiGatewayUrl
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  curl -fsS -X POST "${API_GATEWAY_URL}/api/orders/reject-stale" \
+                    -H "Content-Type: application/json"

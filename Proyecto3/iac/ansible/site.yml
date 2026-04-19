@@ -1,0 +1,47 @@
+---
+- name: Prepare load testing VM
+  hosts: loadtest
+  become: true
+  vars:
+    python_packages:
+      - pip
+      - setuptools
+      - wheel
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - git
+          - curl
+          - jq
+        state: present
+
+    - name: Install Locust and requests
+      ansible.builtin.pip:
+        name:
+          - locust
+          - requests
+        executable: pip3
+
+    - name: Ensure /opt/delivereats exists
+      ansible.builtin.file:
+        path: /opt/delivereats
+        state: directory
+        mode: '0755'
+
+    - name: Copy smoke test helper
+      ansible.builtin.copy:
+        dest: /opt/delivereats/smoke.sh
+        mode: '0755'
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          curl -fsS "${API_GATEWAY_URL:-http://localhost:8080}/health"
+          curl -fsS "${API_GATEWAY_URL:-http://localhost:8080}/api/health"

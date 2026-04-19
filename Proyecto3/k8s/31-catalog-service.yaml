@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+  namespace: delivereats
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catalog-service
+  template:
+    metadata:
+      labels:
+        app: catalog-service
+    spec:
+      initContainers:
+      - name: wait-for-rabbitmq
+        image: busybox:1.28
+        command: ['sh', '-c', "until nc -zv rabbitmq-service 5672; do echo 'Esperando a RabbitMQ...'; sleep 2; done;"]
+      containers:
+      - name: catalog-service
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/catalog-service:v1.0
+        ports:
+        - containerPort: 50052
+          name: grpc
+        - containerPort: 3002
+          name: http
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: NODE_ENV
+        # Este puerto 'PORT' es el que causaba el choque. 
+        # Asegúrate que en el ConfigMap ahora valga "3001"
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: PORT
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: MYSQL_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: MYSQL_PASSWORD
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: REDIS_HOST
+        - name: RABBITMQ_URL
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: RABBITMQ_URL
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "700m"
+        livenessProbe:
+          tcpSocket:
+            port: 50052
+          initialDelaySeconds: 60 # Más tiempo para conectar a Rabbit/Redis
+          periodSeconds: 15
+        readinessProbe:
+          tcpSocket:
+            port: 50052
+          initialDelaySeconds: 30 # No acepta tráfico hasta estar conectado
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+  namespace: delivereats
+spec:
+  selector:
+    app: catalog-service
+  ports:
+  - protocol: TCP
+    port: 50052
+    targetPort: 50052
+    name: grpc
+  - protocol: TCP
+    port: 3002
+    targetPort: 3002
+    name: http
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: catalog-service-hpa
+  namespace: delivereats
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: catalog-service
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
