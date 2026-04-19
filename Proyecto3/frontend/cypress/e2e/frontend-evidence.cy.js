@@ -3,7 +3,7 @@ describe('Frontend Evidence - DeliverEats', () => {
     cy.visit('/login')
     cy.contains('Email').should('be.visible')
     cy.contains(/Contrase/i).should('be.visible')
-    cy.screenshot('01-login-page')
+    cy.screenshot('e2e-ui-base-01-login-page', { capture: 'viewport' })
   })
 
   it('captures register page baseline', () => {
@@ -12,13 +12,13 @@ describe('Frontend Evidence - DeliverEats', () => {
     cy.url().should('include', '/register')
     cy.contains('Nombre').should('be.visible')
     cy.contains(/Contrase/i).should('be.visible')
-    cy.screenshot('02-register-page')
+    cy.screenshot('e2e-ui-base-02-register-page', { capture: 'viewport' })
   })
 
   it('captures redirect from protected route to login', () => {
     cy.clearLocalStorage()
     cy.visit('/')
     cy.url().should('include', '/login')
-    cy.screenshot('03-protected-route-redirect')
+    cy.screenshot('e2e-ui-base-03-protected-route-redirect', { capture: 'viewport' })
   })
 })

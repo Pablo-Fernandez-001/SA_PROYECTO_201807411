@@ -11,7 +11,11 @@
     "cypress:open": "cypress open",
     "cypress:run": "cypress run",
     "cypress:run:evidence": "cypress run --spec cypress/e2e/frontend-evidence.cy.js",
-    "test:e2e:evidence": "start-server-and-test dev http://127.0.0.1:3000 cypress:run:evidence"
+    "cypress:run:full-flow": "cypress run --spec cypress/e2e/auth-roles-flow.cy.js,cypress/e2e/client-full-flow.cy.js,cypress/e2e/admin-full-flow.cy.js,cypress/e2e/restaurant-full-flow.cy.js,cypress/e2e/courier-full-flow.cy.js",
+    "test:e2e:evidence": "start-server-and-test dev http://127.0.0.1:3000 cypress:run:evidence",
+    "test:e2e:full-flow": "start-server-and-test dev http://127.0.0.1:3000 cypress:run:full-flow",
+    "test:e2e:all": "start-server-and-test dev http://127.0.0.1:3000 cypress:run",
+    "test:e2e:refresh-evidence": "npm run test:e2e:full-flow && npm run test:e2e:evidence"
   },
   "dependencies": {
     "@heroicons/react": "^2.0.18",

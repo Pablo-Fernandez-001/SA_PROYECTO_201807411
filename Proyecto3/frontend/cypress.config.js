@@ -3,6 +3,7 @@ import { defineConfig } from 'cypress'
 export default defineConfig({
   video: false,
   screenshotOnRunFailure: true,
+  trashAssetsBeforeRuns: false,
   screenshotsFolder: '../evidence/cypress/screenshots',
   videosFolder: '../evidence/cypress/videos',
   downloadsFolder: '../evidence/cypress/downloads',
