@@ -15,9 +15,12 @@ const deliveryRoutes = require('./routes/delivery')
 const fxRoutes = require('./routes/fx')
 const paymentRoutes = require('./routes/payment')
 const errorHandler = require('./middleware/errorHandler')
+const { originGuard } = require('./middleware/originGuard')
+const { createMetricsTracker } = require('./utils/metrics')
 
 const app = express()
 const PORT = process.env.PORT || 8080
+const metrics = createMetricsTracker('api-gateway')
 
 // ── HTTP server + Socket.IO ─────────────────────────────────────────────────
 const server = http.createServer(app)
@@ -63,6 +66,8 @@ app.use(limiter)
 app.use(morgan('combined', { stream: { write: message => logger.info(message) } }))
 app.use(express.json({ limit: '20mb' }))
 app.use(express.urlencoded({ extended: true, limit: '20mb' }))
+app.use(originGuard)
+app.use(metrics.middleware)
 
 // Health check - both routes for compatibility
 app.get('/health', (req, res) => {
@@ -80,6 +85,8 @@ app.get('/api/health', (req, res) => {
     service: 'api-gateway' 
   })
 })
+
+app.get('/metrics', metrics.handler)
 
 // Routes
 app.use('/api/auth', authRoutes)

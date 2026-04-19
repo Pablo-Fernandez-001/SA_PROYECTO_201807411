@@ -3,7 +3,7 @@ FX Service — Main entry point (DeliverEats)
 Inicia servidor Flask (REST API) + gRPC en threads separados
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from app.config import Config
 from app.utils.logger import logger
@@ -11,9 +11,21 @@ from app.grpc_server import serve as grpc_serve
 from app.services.fx_service import fx_service
 from app.services.cache_service import cache_service
 import threading
+import time
 
 app = Flask(__name__)
 CORS(app)
+started_at = int(time.time())
+http_counters = {}
+
+
+@app.before_request
+def collect_http_metrics():
+    path = request.path
+    if path == '/metrics':
+        return
+    metric_key = (request.method, path)
+    http_counters[metric_key] = http_counters.get(metric_key, 0) + 1
 
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
@@ -119,6 +131,26 @@ def cache_stats():
     """Obtener estadísticas de Redis caché"""
     stats = cache_service.get_cache_stats()
     return jsonify(stats), 200
+
+
+@app.route('/metrics', methods=['GET'])
+def metrics():
+    lines = []
+    lines.append('# HELP service_up Service health status')
+    lines.append('# TYPE service_up gauge')
+    lines.append('service_up{service="fx-service"} 1')
+    lines.append('# HELP process_uptime_seconds Process uptime in seconds')
+    lines.append('# TYPE process_uptime_seconds gauge')
+    lines.append(f'process_uptime_seconds{{service="fx-service"}} {int(time.time()) - started_at}')
+    lines.append('# HELP http_requests_total Total HTTP requests processed')
+    lines.append('# TYPE http_requests_total counter')
+
+    for (method, path), count in http_counters.items():
+        safe_path = path.replace('"', '')
+        lines.append(f'http_requests_total{{service="fx-service",method="{method}",route="{safe_path}"}} {count}')
+
+    payload = '\n'.join(lines) + '\n'
+    return Response(payload, mimetype='text/plain; version=0.0.4; charset=utf-8')
 
 
 # ─── Start Servers ────────────────────────────────────────────────────────────

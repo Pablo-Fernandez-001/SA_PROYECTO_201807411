@@ -1,0 +1,3 @@
+{"type":"dashboard","id":"delivereats-phase3","attributes":{"title":"DeliverEats Logs Overview","description":"Error rate and response timelines by service"}}
+{"type":"visualization","id":"errors-by-service","attributes":{"title":"Errors by Service"}}
+{"type":"visualization","id":"response-time-trend","attributes":{"title":"Response Time Trend"}}

@@ -1,0 +1,8 @@
+{
+  "title": "DeliverEats Phase3",
+  "exportedAt": "2026-04-19T09:20:00Z",
+  "panels": [
+    {"title": "Up Targets", "query": "sum(up)"},
+    {"title": "Request Rate", "query": "sum(rate(http_requests_total[1m]))"}
+  ]
+}

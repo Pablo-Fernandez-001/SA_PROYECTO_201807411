@@ -3,6 +3,10 @@ kind: Deployment
 metadata:
   name: api-gateway
   namespace: delivereats
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: "80"
 spec:
   replicas: 3
   selector:
@@ -55,6 +59,21 @@ spec:
             configMapKeyRef:
               name: api-gateway-config
               key: DELIVERY_SERVICE_URL
+        - name: NOTIFICATION_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: NOTIFICATION_SERVICE_URL
+        - name: FX_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: FX_SERVICE_URL
+        - name: PAYMENT_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: PAYMENT_SERVICE_URL
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:

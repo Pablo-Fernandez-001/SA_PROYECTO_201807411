@@ -4,13 +4,16 @@ const cors = require('cors');
 const logger = require('./utils/logger');
 const { initDatabase } = require('./config/database');
 const { connectRabbitMQ } = require('./messaging/rabbitmqPublisher');
+const { createMetricsTracker } = require('./utils/metrics');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
+const metrics = createMetricsTracker('orders-service');
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(metrics.middleware);
 
 // Request logging
 app.use((req, res, next) => {
@@ -22,6 +25,8 @@ app.use((req, res, next) => {
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', service: 'orders-service', timestamp: new Date().toISOString() });
 });
+
+app.get('/metrics', metrics.handler);
 
 // Routes
 const orderRoutes = require('./routes/orders');

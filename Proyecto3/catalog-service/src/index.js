@@ -5,13 +5,16 @@ const logger = require('./utils/logger');
 const { initDatabase } = require('./config/database');
 const { startGrpcServer } = require('./grpc/catalogGrpcServer');
 const { startConsumer } = require('./messaging/rabbitmqConsumer');
+const { createMetricsTracker } = require('./utils/metrics');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+const metrics = createMetricsTracker('catalog-service');
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(metrics.middleware);
 
 // Request logging
 app.use((req, res, next) => {
@@ -23,6 +26,8 @@ app.use((req, res, next) => {
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', service: 'catalog-service', timestamp: new Date().toISOString() });
 });
+
+app.get('/metrics', metrics.handler);
 
 // Routes
 const restaurantRoutes = require('./routes/restaurants');

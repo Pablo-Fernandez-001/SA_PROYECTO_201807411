@@ -5,7 +5,7 @@ resource "google_compute_instance" "mssql_server" {
 
   boot_disk {
     initialize_params {
-      image = "windows-cloud/windows-server-2022-dc-v20260409"
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
       size  = 100
       type  = "pd-standard"
     }
@@ -21,8 +21,23 @@ resource "google_compute_instance" "mssql_server" {
   tags = ["mssql", "database"]
 
   metadata = {
-    windows-startup-script-ps1 = <<-EOT
-      Write-Host "Install MS SQL Server manually or via domain-specific bootstrap"
+    startup-script = <<-EOT
+      #!/bin/bash
+      set -euxo pipefail
+
+      apt-get update -y
+      apt-get install -y docker.io
+      systemctl enable docker
+      systemctl start docker
+
+      docker pull mcr.microsoft.com/mssql/server:2022-latest
+      docker rm -f delivereats-mssql || true
+      docker run -d --name delivereats-mssql \
+        -e "ACCEPT_EULA=Y" \
+        -e "MSSQL_SA_PASSWORD=DeliverEats!2026" \
+        -p 1433:1433 \
+        --restart unless-stopped \
+        mcr.microsoft.com/mssql/server:2022-latest
     EOT
   }
 }

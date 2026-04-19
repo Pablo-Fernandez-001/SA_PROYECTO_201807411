@@ -1317,7 +1317,7 @@ El usuario queda autenticado con JWT válido y habilitado según su rol.
 
 #### 12.3.1 CDU-02 Gestionar Catálogo
 
-**Estado:** Pendiente de implementación
+**Estado:** Implementado en Fase 2/3
 
 ![CDU-02 Gestionar Catálogo](../Practica1/src/3.3.2.png)
 
@@ -1328,7 +1328,7 @@ El usuario queda autenticado con JWT válido y habilitado según su rol.
 
 #### 12.3.2 CDU-03 Gestionar Órdenes
 
-**Estado:** Pendiente de implementación
+**Estado:** Implementado en Fase 2/3
 
 ![CDU-03 Gestionar Órdenes](../Practica1/src/3.3.3.png)
 
@@ -1339,7 +1339,7 @@ El usuario queda autenticado con JWT válido y habilitado según su rol.
 
 #### 12.3.3 CDU-04 Gestionar Entregas
 
-**Estado:** Pendiente de implementación
+**Estado:** Implementado en Fase 2/3
 
 ![CDU-04 Gestionar Entregas](../Practica1/src/3.3.4.png)
 
@@ -1350,7 +1350,7 @@ El usuario queda autenticado con JWT válido y habilitado según su rol.
 
 #### 12.3.4 CDU-05 Gestionar Administración
 
-**Estado:** Pendiente de implementación
+**Estado:** Implementado en Fase 2/3
 
 ![CDU-05 Gestionar Administración](../Practica1/src/3.3.5.png)
 
@@ -1551,21 +1551,21 @@ Practica2/
 - [ ] Rate limiting por usuario (no solo global)
 - [ ] Password reset via email
 - [ ] 2FA (autenticación de dos factores)
-- [ ] Logs centralizados (ELK Stack)
+- [x] Logs centralizados (ELK Stack)
 
 ### 16.2 Mediano Plazo
-- [ ] Implementar CDU-02: Gestionar Catálogo
-- [ ] Implementar CDU-03: Gestionar Órdenes
-- [ ] Implementar CDU-04: Gestionar Entregas
+- [x] Implementar CDU-02: Gestionar Catálogo
+- [x] Implementar CDU-03: Gestionar Órdenes
+- [x] Implementar CDU-04: Gestionar Entregas
 - [ ] WebSockets para notificaciones en tiempo real
 - [ ] GraphQL API como alternativa a REST
 
 ### 16.3 Largo Plazo
-- [ ] Migración a Kubernetes
+- [x] Migración base a Kubernetes (manifiestos + HPA + CronJob + observabilidad)
 - [ ] Service mesh (Istio)
 - [ ] Distributed tracing (Jaeger)
-- [ ] CI/CD completo (GitHub Actions)
-- [ ] Monitoreo con Prometheus + Grafana
+- [x] CI/CD completo (GitHub Actions + validación Fase 3)
+- [x] Monitoreo con Prometheus + Grafana
 
 ---
 

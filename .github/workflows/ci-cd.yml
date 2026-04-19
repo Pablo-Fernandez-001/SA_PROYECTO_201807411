@@ -11,6 +11,7 @@ on:
     branches:
       - main
       - develop
+  workflow_dispatch:
 
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -20,11 +21,82 @@ env:
 
 jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 0. PHASE 3 VALIDATION (Local-style checks)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  phase3-validation:
+    name: Phase3 Terraform + Ansible + Smoke + Locust
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt check
+        working-directory: ./Proyecto3/iac/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        working-directory: ./Proyecto3/iac/terraform
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        working-directory: ./Proyecto3/iac/terraform
+        run: terraform validate
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible and Locust
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible locust
+
+      - name: Validate Ansible inventory + syntax
+        run: |
+          ansible-inventory -i Proyecto3/iac/ansible/inventory.example.ini --list > /tmp/inventory.json
+          ansible-playbook -i Proyecto3/iac/ansible/inventory.example.ini Proyecto3/iac/ansible/site.yml --syntax-check
+
+      - name: Run local smoke mock
+        run: |
+          chmod +x Proyecto3/tests/smoke/smoke.sh
+          python Proyecto3/tests/smoke/mock_server.py &
+          SERVER_PID=$!
+          sleep 2
+          API_GATEWAY_URL=http://localhost:8080 Proyecto3/tests/smoke/smoke.sh | tee Proyecto3/evidence/smoke/smoke-run.log
+          kill $SERVER_PID
+
+      - name: Run locust smoke load profile
+        run: |
+          chmod +x Proyecto3/tests/load/run-locust.sh
+          python Proyecto3/tests/smoke/mock_server.py &
+          SERVER_PID=$!
+          sleep 2
+          export RUN_TIME=45s
+          Proyecto3/tests/load/run-locust.sh http://localhost:8080 Proyecto3/evidence/load
+          python Proyecto3/tests/load/validate_thresholds.py Proyecto3/evidence/load/locust_stats.csv Proyecto3/evidence/load/performance-validation.md
+          kill $SERVER_PID
+
+      - name: Upload Phase 3 evidence artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-evidence
+          path: |
+            Proyecto3/evidence/smoke/*
+            Proyecto3/evidence/load/*
+            Proyecto3/evidence/cronjob/*
+            Proyecto3/evidence/dashboards/*
+            Proyecto3/evidence/screenshots/*
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 1. LINT & CODE QUALITY
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   lint:
     name: Lint Code
     runs-on: ubuntu-latest
+    needs: phase3-validation
     strategy:
       matrix:
         service:
@@ -43,7 +115,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+          cache-dependency-path: Proyecto3/${{ matrix.service }}/package-lock.json
 
       - name: Install dependencies
         working-directory: ./Proyecto3/${{ matrix.service }}
@@ -69,6 +141,7 @@ jobs:
           - orders-service
           - delivery-service
           - notification-service
+          - payment-service
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -78,7 +151,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+          cache-dependency-path: Proyecto3/${{ matrix.service }}/package-lock.json
 
       - name: Install dependencies
         working-directory: ./Proyecto3/${{ matrix.service }}
@@ -106,6 +179,7 @@ jobs:
           - orders-service
           - delivery-service
           - notification-service
+          - payment-service
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -136,6 +210,9 @@ jobs:
           - orders-service
           - delivery-service
           - notification-service
+          - payment-service
+          - payment-service
+          - fx-service
           - frontend
     steps:
       - name: Checkout code
@@ -230,6 +307,8 @@ jobs:
           kubectl set image deployment/orders-service orders-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/orders-service:develop-${GITHUB_SHA::8} -n delivereats
           kubectl set image deployment/delivery-service delivery-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/delivery-service:develop-${GITHUB_SHA::8} -n delivereats
           kubectl set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/notification-service:develop-${GITHUB_SHA::8} -n delivereats
+          kubectl set image deployment/payment-service payment-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/payment-service:develop-${GITHUB_SHA::8} -n delivereats
+          kubectl set image deployment/fx-service fx-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/fx-service:develop-${GITHUB_SHA::8} -n delivereats
           kubectl set image deployment/frontend frontend=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/frontend:develop-${GITHUB_SHA::8} -n delivereats
 
       - name: Wait for rollout
@@ -286,6 +365,8 @@ jobs:
           kubectl set image deployment/orders-service orders-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/orders-service:${{ steps.version.outputs.VERSION }} -n delivereats
           kubectl set image deployment/delivery-service delivery-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/delivery-service:${{ steps.version.outputs.VERSION }} -n delivereats
           kubectl set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/notification-service:${{ steps.version.outputs.VERSION }} -n delivereats
+          kubectl set image deployment/payment-service payment-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/payment-service:${{ steps.version.outputs.VERSION }} -n delivereats
+          kubectl set image deployment/fx-service fx-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/fx-service:${{ steps.version.outputs.VERSION }} -n delivereats
           kubectl set image deployment/frontend frontend=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/frontend:${{ steps.version.outputs.VERSION }} -n delivereats
 
       - name: Wait for rollout completion
@@ -296,6 +377,8 @@ jobs:
           kubectl rollout status deployment/orders-service -n delivereats --timeout=10m
           kubectl rollout status deployment/delivery-service -n delivereats --timeout=10m
           kubectl rollout status deployment/notification-service -n delivereats --timeout=10m
+          kubectl rollout status deployment/payment-service -n delivereats --timeout=10m
+          kubectl rollout status deployment/fx-service -n delivereats --timeout=10m
           kubectl rollout status deployment/frontend -n delivereats --timeout=10m
 
       - name: Verify production deployment
@@ -351,6 +434,8 @@ jobs:
           kubectl rollout undo deployment/orders-service -n delivereats
           kubectl rollout undo deployment/delivery-service -n delivereats
           kubectl rollout undo deployment/notification-service -n delivereats
+          kubectl rollout undo deployment/payment-service -n delivereats
+          kubectl rollout undo deployment/fx-service -n delivereats
           kubectl rollout undo deployment/frontend -n delivereats
 
       - name: Wait for rollback completion

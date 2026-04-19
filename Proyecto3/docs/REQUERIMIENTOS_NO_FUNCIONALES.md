@@ -1,5 +1,5 @@
-# Requerimientos No Funcionales - DeliverEats Fase 2
-## Versión 1.1.0 - Actualizado para Práctica 4
+# Requerimientos No Funcionales - DeliverEats Fase 3
+## Versión 1.2.0 - Actualizado para cierre Fase 3
 
 ---
 
@@ -516,6 +516,6 @@ El sistema será evaluado según las siguientes métricas:
 
 ---
 
-**Fecha de actualización:** 23 de febrero de 2026  
-**Versión:** 1.1.0  
-**Estado:** Fase 2 - En desarrollo
+**Fecha de actualización:** 19 de abril de 2026  
+**Versión:** 1.2.0  
+**Estado:** Fase 3 - Actualizado

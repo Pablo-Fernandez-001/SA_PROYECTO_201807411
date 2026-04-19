@@ -547,6 +547,6 @@ stateDiagram-v2
 
 ---
 
-**Fecha de actualización:** 23 de febrero de 2026  
-**Versión:** 1.1.0  
-**Estado:** Fase 2 - Actualizado
+**Fecha de actualización:** 19 de abril de 2026  
+**Versión:** 1.2.0  
+**Estado:** Fase 3 - Actualizado

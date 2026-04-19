@@ -19,6 +19,8 @@ spec:
         ports:
         - containerPort: 50051
           name: grpc
+        - containerPort: 9101
+          name: metrics
         env:
         - name: NODE_ENV
           valueFrom:
@@ -83,6 +85,10 @@ kind: Service
 metadata:
   name: auth-service
   namespace: delivereats
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: "9101"
 spec:
   selector:
     app: auth-service
@@ -90,6 +96,11 @@ spec:
   - protocol: TCP
     port: 50051
     targetPort: 50051
+    name: grpc
+  - protocol: TCP
+    port: 9101
+    targetPort: 9101
+    name: metrics
   type: ClusterIP
 ---
 apiVersion: autoscaling/v2
