@@ -296,20 +296,36 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/develop'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Decide execution mode
+        id: branch_gate
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/develop" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Integration tests are only enforced on develop. Running no-op success for this branch."
+          fi
+
       - name: Setup Node.js
+        if: steps.branch_gate.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
       - name: Run integration tests
+        if: steps.branch_gate.outputs.run == 'true'
         run: |
           echo "Running integration tests against staging environment"
           # npm run test:integration
+
+      - name: Mark integration tests as successful no-op
+        if: steps.branch_gate.outputs.run != 'true'
+        run: echo "Integration tests skipped by policy on non-develop branches (successful no-op)."
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 6. DEPLOY TO DEVELOPMENT
@@ -318,7 +334,6 @@ jobs:
     name: Deploy to VM (Develop)
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/develop'
     environment:
       name: development
       url: http://34.42.147.183
@@ -326,7 +341,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Decide execution mode
+        id: branch_gate
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/develop" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Develop deployment is only enforced on develop. Running no-op success for this branch."
+          fi
+
       - name: Detect GCP auth configuration
+        if: steps.branch_gate.outputs.run == 'true'
         id: gcp_auth
         shell: bash
         run: |
@@ -338,24 +365,24 @@ jobs:
           fi
 
       - name: Authenticate to Google Cloud
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS || vars.GCP_SA_KEY || vars.GCP_CREDENTIALS }}
 
       - name: Setup gcloud
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Bundle manifests and scripts
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         run: |
           tar -czf delivereats-cicd.tar.gz Proyecto3/k8s Proyecto3/monitoring Proyecto3/scripts/k3s
 
       - name: Upload bundle to VM
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute scp delivereats-cicd.tar.gz ${{ env.VM_NAME }}:~/delivereats-cicd.tar.gz \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -365,7 +392,7 @@ jobs:
             --quiet
 
       - name: Deploy on VM k3s
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -398,7 +425,7 @@ jobs:
             --quiet
 
       - name: Verify deployment
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -407,6 +434,14 @@ jobs:
             --ssh-flag='-o UserKnownHostsFile=/dev/null' \
             --command="sudo k3s kubectl get pods -n delivereats; sudo k3s kubectl get svc -n delivereats; sudo k3s kubectl get ingress -n delivereats || true" \
             --quiet
+
+      - name: Mark deploy-dev as successful no-op
+        if: steps.branch_gate.outputs.run != 'true'
+        run: echo "Develop deployment skipped by policy on non-develop branches (successful no-op)."
+
+      - name: Mark deploy-dev as successful no-op (missing credentials)
+        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available != 'true'
+        run: echo "Develop deployment skipped because GCP credentials are not configured (successful no-op)."
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 7. DEPLOY TO PRODUCTION (Requires manual approval + tag)
@@ -521,14 +556,26 @@ jobs:
   rollback:
     name: Rollback VM (k3s)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    needs: build
     environment:
       name: production
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Decide execution mode
+        id: dispatch_gate
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Rollback only executes on manual workflow_dispatch. Running no-op success for this trigger."
+          fi
+
       - name: Detect GCP auth configuration
+        if: steps.dispatch_gate.outputs.run == 'true'
         id: gcp_auth
         shell: bash
         run: |
@@ -540,19 +587,19 @@ jobs:
           fi
 
       - name: Authenticate to Google Cloud
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS || vars.GCP_SA_KEY || vars.GCP_CREDENTIALS }}
 
       - name: Setup gcloud
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Rollback all deployments
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -571,7 +618,7 @@ jobs:
             --quiet
 
       - name: Wait for rollback completion
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -582,7 +629,7 @@ jobs:
             --quiet
 
       - name: Verify rollback
-        if: steps.gcp_auth.outputs.available == 'true'
+        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -591,3 +638,11 @@ jobs:
             --ssh-flag='-o UserKnownHostsFile=/dev/null' \
             --command="sudo k3s kubectl get pods -n delivereats" \
             --quiet
+
+      - name: Mark rollback as successful no-op
+        if: steps.dispatch_gate.outputs.run != 'true'
+        run: echo "Rollback skipped by policy on non-manual triggers (successful no-op)."
+
+      - name: Mark rollback as successful no-op (missing credentials)
+        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available != 'true'
+        run: echo "Rollback skipped because GCP credentials are not configured (successful no-op)."
