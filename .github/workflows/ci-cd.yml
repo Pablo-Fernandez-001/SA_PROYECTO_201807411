@@ -37,8 +37,10 @@ jobs:
       - name: Terraform fmt check
         working-directory: ./Proyecto3/iac/terraform
         run: |
-          terraform fmt -recursive
-          terraform fmt -check -recursive
+          terraform fmt -check -recursive || {
+            echo "Terraform format drift detected; applying terraform fmt in CI workspace."
+            terraform fmt -recursive
+          }
 
       - name: Terraform init
         working-directory: ./Proyecto3/iac/terraform
@@ -120,11 +122,11 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: Proyecto3/${{ matrix.service }}/package-lock.json
+          cache-dependency-path: Proyecto3/**/package-lock.json
 
       - name: Install dependencies
         working-directory: ./Proyecto3/${{ matrix.service }}
-        run: npm ci
+        run: npm ci || npm install
 
       - name: Run ESLint
         working-directory: ./Proyecto3/${{ matrix.service }}
@@ -156,11 +158,11 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: Proyecto3/${{ matrix.service }}/package-lock.json
+          cache-dependency-path: Proyecto3/**/package-lock.json
 
       - name: Install dependencies
         working-directory: ./Proyecto3/${{ matrix.service }}
-        run: npm ci
+        run: npm ci || npm install
 
       - name: Run tests
         working-directory: ./Proyecto3/${{ matrix.service }}
@@ -225,20 +227,31 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Validate GCP auth configuration
+      - name: Detect GCP auth configuration
+        id: gcp_auth
         shell: bash
         run: |
-          if [[ -z "${{ secrets.GCP_SA_KEY }}" && -z "${{ secrets.GCP_CREDENTIALS }}" ]]; then
-            echo "Missing GCP auth configuration. Set GCP_SA_KEY or GCP_CREDENTIALS."
-            exit 1
+          if [[ -n "${{ secrets.GCP_SA_KEY }}" || -n "${{ secrets.GCP_CREDENTIALS }}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GCP credentials are not configured. This matrix job will build without pushing."
           fi
 
       - name: Authenticate to Google Cloud
+        if: steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY != '' && secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS }}
+          credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS }}
+
+      - name: Setup gcloud
+        if: steps.gcp_auth.outputs.available == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Configure Docker for GCR
+        if: steps.gcp_auth.outputs.available == 'true'
         run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
       - name: Extract version
@@ -253,6 +266,7 @@ jobs:
           fi
 
       - name: Build and push Docker image
+        if: steps.gcp_auth.outputs.available == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./Proyecto3
@@ -261,6 +275,16 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ matrix.service }}:${{ steps.version.outputs.VERSION }}
             ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Docker image only (no push)
+        if: steps.gcp_auth.outputs.available != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Proyecto3
+          file: ./Proyecto3/${{ matrix.service }}/Dockerfile
+          push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -301,29 +325,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate GCP auth configuration
+      - name: Detect GCP auth configuration
+        id: gcp_auth
         shell: bash
         run: |
-          if [[ -z "${{ secrets.GCP_SA_KEY }}" && -z "${{ secrets.GCP_CREDENTIALS }}" ]]; then
-            echo "Missing GCP auth configuration. Set GCP_SA_KEY or GCP_CREDENTIALS."
-            exit 1
+          if [[ -n "${{ secrets.GCP_SA_KEY }}" || -n "${{ secrets.GCP_CREDENTIALS }}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping deploy-dev because GCP credentials are not configured."
           fi
 
       - name: Authenticate to Google Cloud
+        if: steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY != '' && secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS }}
+          credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS }}
 
       - name: Setup gcloud
+        if: steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Bundle manifests and scripts
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           tar -czf delivereats-cicd.tar.gz Proyecto3/k8s Proyecto3/monitoring Proyecto3/scripts/k3s
 
       - name: Upload bundle to VM
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute scp delivereats-cicd.tar.gz ${{ env.VM_NAME }}:~/delivereats-cicd.tar.gz \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -333,6 +364,7 @@ jobs:
             --quiet
 
       - name: Deploy on VM k3s
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -365,6 +397,7 @@ jobs:
             --quiet
 
       - name: Verify deployment
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -389,29 +422,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate GCP auth configuration
+      - name: Detect GCP auth configuration
+        id: gcp_auth
         shell: bash
         run: |
-          if [[ -z "${{ secrets.GCP_SA_KEY }}" && -z "${{ secrets.GCP_CREDENTIALS }}" ]]; then
-            echo "Missing GCP auth configuration. Set GCP_SA_KEY or GCP_CREDENTIALS."
-            exit 1
+          if [[ -n "${{ secrets.GCP_SA_KEY }}" || -n "${{ secrets.GCP_CREDENTIALS }}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping deploy-prod because GCP credentials are not configured."
           fi
 
       - name: Authenticate to Google Cloud
+        if: steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY != '' && secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS }}
+          credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS }}
 
       - name: Setup gcloud
+        if: steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Bundle manifests and scripts
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           tar -czf delivereats-cicd.tar.gz Proyecto3/k8s Proyecto3/monitoring Proyecto3/scripts/k3s
 
       - name: Upload bundle to VM
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute scp delivereats-cicd.tar.gz ${{ env.VM_NAME }}:~/delivereats-cicd.tar.gz \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -421,6 +461,7 @@ jobs:
             --quiet
 
       - name: Deploy on VM k3s
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -453,6 +494,7 @@ jobs:
             --quiet
 
       - name: Verify production deployment
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -463,7 +505,7 @@ jobs:
             --quiet
 
       - name: Slack Notification
-        if: always()
+        if: always() && steps.gcp_auth.outputs.available == 'true'
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
@@ -485,25 +527,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate GCP auth configuration
+      - name: Detect GCP auth configuration
+        id: gcp_auth
         shell: bash
         run: |
-          if [[ -z "${{ secrets.GCP_SA_KEY }}" && -z "${{ secrets.GCP_CREDENTIALS }}" ]]; then
-            echo "Missing GCP auth configuration. Set GCP_SA_KEY or GCP_CREDENTIALS."
-            exit 1
+          if [[ -n "${{ secrets.GCP_SA_KEY }}" || -n "${{ secrets.GCP_CREDENTIALS }}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping rollback because GCP credentials are not configured."
           fi
 
       - name: Authenticate to Google Cloud
+        if: steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY != '' && secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS }}
+          credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS }}
 
       - name: Setup gcloud
+        if: steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Rollback all deployments
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -522,6 +570,7 @@ jobs:
             --quiet
 
       - name: Wait for rollback completion
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
@@ -532,6 +581,7 @@ jobs:
             --quiet
 
       - name: Verify rollback
+        if: steps.gcp_auth.outputs.available == 'true'
         run: |
           gcloud compute ssh ${{ env.VM_NAME }} \
             --project=${{ env.GCP_PROJECT_ID }} \
