@@ -4,7 +4,7 @@ metadata:
   name: notification-service
   namespace: delivereats
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: notification-service
@@ -96,8 +96,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: notification-service
-  minReplicas: 2
-  maxReplicas: 5
+  minReplicas: 1
+  maxReplicas: 2
   metrics:
   - type: Resource
     resource:

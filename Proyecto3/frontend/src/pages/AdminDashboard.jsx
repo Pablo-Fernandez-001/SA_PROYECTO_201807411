@@ -9,7 +9,7 @@ import {
 import useAuthStore from '../stores/authStore'
 import RegisterUserForm from '../components/RegisterUserForm'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://34.55.27.36:8080/api'
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 const AdminDashboard = () => {
   const { user, token } = useAuthStore()

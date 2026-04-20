@@ -4,7 +4,7 @@ metadata:
   name: delivery-service
   namespace: delivereats
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: delivery-service
@@ -111,8 +111,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: delivery-service
-  minReplicas: 2
-  maxReplicas: 6
+  minReplicas: 1
+  maxReplicas: 2
   metrics:
   - type: Resource
     resource:

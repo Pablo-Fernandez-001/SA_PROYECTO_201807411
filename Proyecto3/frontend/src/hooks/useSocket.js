@@ -1,8 +1,21 @@
 import { useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
 
-// Socket.IO URL = same as API but without /api path
-const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://34.55.27.36:8080/api').replace('/api', '')
+function resolveSocketUrl() {
+  const apiUrl = import.meta.env.VITE_API_URL || '/api'
+
+  if (apiUrl.startsWith('http://') || apiUrl.startsWith('https://')) {
+    return apiUrl.replace(/\/api\/?$/, '')
+  }
+
+  if (typeof window !== 'undefined') {
+    return window.location.origin
+  }
+
+  return ''
+}
+
+const SOCKET_URL = resolveSocketUrl()
 
 let sharedSocket = null
 

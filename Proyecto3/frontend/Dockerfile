@@ -1,11 +1,9 @@
 # ETAPA 1: Build de la aplicación
 FROM node:18-alpine as build
 WORKDIR /app
-# Copiamos archivos de dependencias
-COPY ./frontend/package*.json ./
-RUN npm install
-# Copiamos todo el código y generamos los archivos estáticos
+# Copiamos código y generamos los archivos estáticos
 COPY ./frontend/ ./
+RUN npm install && chmod +x node_modules/.bin/*
 RUN npm run build
 
 # ETAPA 2: Servidor Nginx para producción

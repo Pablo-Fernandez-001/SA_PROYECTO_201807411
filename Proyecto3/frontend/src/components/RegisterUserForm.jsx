@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { XMarkIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import useAuthStore from '../stores/authStore'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://34.55.27.36:8080/api'
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 const RegisterUserForm = ({ onClose, onSuccess }) => {
   const { token } = useAuthStore()

@@ -31,10 +31,13 @@ fi
 "${KUBECTL_CMD[@]}" apply -f Proyecto3/k8s/41-frontend.yaml
 "${KUBECTL_CMD[@]}" apply -f Proyecto3/k8s/50-ingress.yaml
 "${KUBECTL_CMD[@]}" apply -f Proyecto3/k8s/60-cronjob-reject-old-orders.yaml
-"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/prometheus/k8s-prometheus.yaml
-"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/grafana/k8s-grafana.yaml
-"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/elk/elasticsearch.yaml
-"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/elk/kibana.yaml
-"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/elk/k8s-fluent-bit.yaml
+
+if [[ "${APPLY_MONITORING:-false}" == "true" ]]; then
+	"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/prometheus/k8s-prometheus.yaml
+	"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/grafana/k8s-grafana.yaml
+	"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/elk/elasticsearch.yaml
+	"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/elk/kibana.yaml
+	"${KUBECTL_CMD[@]}" apply -f Proyecto3/monitoring/elk/k8s-fluent-bit.yaml
+fi
 
 "${KUBECTL_CMD[@]}" get pods -n delivereats

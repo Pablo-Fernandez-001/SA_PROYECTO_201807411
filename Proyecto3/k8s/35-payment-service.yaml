@@ -4,7 +4,7 @@ metadata:
   name: payment-service
   namespace: delivereats
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: payment-service
@@ -118,8 +118,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: payment-service
-  minReplicas: 2
-  maxReplicas: 8
+  minReplicas: 1
+  maxReplicas: 2
   metrics:
   - type: Resource
     resource:

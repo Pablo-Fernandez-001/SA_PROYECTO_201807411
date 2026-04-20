@@ -4,7 +4,7 @@ metadata:
   name: frontend
   namespace: delivereats
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: frontend
@@ -17,13 +17,13 @@ spec:
       - name: frontend
         image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/frontend:v1.1
         ports:
-        - containerPort: 3000
+        - containerPort: 8080
           name: http
         env:
         - name: VITE_API_GATEWAY_URL # <--- Prueba con este nombre
-          value: "http://136.119.187.184"
+          value: "/api"
         - name: VITE_API_URL         # <--- Deja este también por si acaso
-          value: "http://136.119.187.184"
+          value: "/api"
         resources:
           requests:
             memory: "128Mi"
@@ -34,13 +34,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /
-            port: 3000
+            port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /
-            port: 3000
+            port: 8080
           initialDelaySeconds: 10
           periodSeconds: 5
 ---
@@ -55,7 +55,7 @@ spec:
   ports:
   - protocol: TCP
     port: 80
-    targetPort: 3000
+    targetPort: 8080
   type: LoadBalancer
 ---
 apiVersion: autoscaling/v2
@@ -68,8 +68,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: frontend
-  minReplicas: 2
-  maxReplicas: 5
+  minReplicas: 1
+  maxReplicas: 2
   metrics:
   - type: Resource
     resource:
