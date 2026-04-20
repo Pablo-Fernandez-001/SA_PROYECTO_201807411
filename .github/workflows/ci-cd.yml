@@ -65,6 +65,7 @@ jobs:
 
       - name: Run local smoke mock
         run: |
+          mkdir -p Proyecto3/evidence/smoke
           chmod +x Proyecto3/tests/smoke/smoke.sh
           python Proyecto3/tests/smoke/mock_server.py &
           SERVER_PID=$!
@@ -74,6 +75,7 @@ jobs:
 
       - name: Run locust smoke load profile
         run: |
+          mkdir -p Proyecto3/evidence/load
           chmod +x Proyecto3/tests/load/run-locust.sh
           python Proyecto3/tests/smoke/mock_server.py &
           SERVER_PID=$!
