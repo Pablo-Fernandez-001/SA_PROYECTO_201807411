@@ -121,3 +121,11 @@ data:
   CACHE_TTL: "360"
   FALLBACK_TTL: "86400"
   LOG_LEVEL: "INFO"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: delivereats-config
+  namespace: delivereats
+data:
+  apiGatewayUrl: "http://api-gateway:3000"
