@@ -34,15 +34,14 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
-      - name: Terraform fmt check
-        continue-on-error: true
+      - name: Terraform fmt normalize and verify
         working-directory: ./Proyecto3/iac/terraform
         run: |
-          terraform fmt -check -recursive || {
-            echo "Terraform format drift detected; applying terraform fmt in CI workspace."
-            terraform fmt -recursive
-          }
+          terraform fmt -recursive
+          terraform fmt -check -recursive
 
       - name: Terraform init
         working-directory: ./Proyecto3/iac/terraform
