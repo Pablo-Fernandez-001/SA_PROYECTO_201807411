@@ -489,6 +489,7 @@ exports.getAvailableOrders = async (req, res) => {
   try {
     // Get FINALIZADA orders from orders-service
     const response = await axios.get(`${ORDERS_SERVICE_URL}/api/orders`, { timeout: 5000 });
+    console.log('Fetched orders from orders-service:', response.data);
     const allOrders = response.data;
 
     // Filter to FINALIZADA only

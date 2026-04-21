@@ -50,11 +50,11 @@ metadata:
   namespace: delivereats
 data:
   NODE_ENV: "production"
-  PORT: "50054"
+  PORT: "3004"
   DB_HOST: "34.55.202.138"
   DB_PORT: "3306"
   DB_NAME: "delivery_db"
-  ORDERS_SERVICE_URL: "http://orders-service:50053"
+  ORDERS_SERVICE_URL: "http://orders-service:3003"
   NOTIFICATION_SERVICE_URL: "http://notification-service:50055"
 ---
 apiVersion: v1
@@ -81,7 +81,7 @@ data:
   AUTH_SERVICE_URL: "auth-service:50051"
   CATALOG_SERVICE_URL: "catalog-service:50052"
   ORDERS_SERVICE_URL: "orders-service:50053"
-  DELIVERY_SERVICE_URL: "delivery-service:50054"
+  DELIVERY_SERVICE_URL: "delivery-service:3004"
   NOTIFICATION_SERVICE_URL: "notification-service:50055"
   FX_SERVICE_URL: "fx-service:5000"
   PAYMENT_SERVICE_URL: "payment-service:3006"
@@ -98,7 +98,7 @@ data:
   DB_HOST: "34.55.202.138"
   DB_PORT: "3306"
   DB_NAME: "payment_db"
-  ORDERS_SERVICE_URL: "http://orders-service:50053"
+  ORDERS_SERVICE_URL: "http://orders-service:3003"
   FX_SERVICE_URL: "http://fx-service:5000"
   NOTIFICATION_SERVICE_URL: "http://notification-service:50055"
 ---
@@ -128,4 +128,4 @@ metadata:
   name: delivereats-config
   namespace: delivereats
 data:
-  apiGatewayUrl: "http://api-gateway:3000"
+  apiGatewayUrl: "http://api-gateway:80"

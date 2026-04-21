@@ -197,3 +197,15 @@ jobs:
           kubectl set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/notification-service:${{ github.sha }} -n delivereats
           kubectl set image deployment/payment-service payment-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/payment-service:${{ github.sha }} -n delivereats
           kubectl set image deployment/fx-service fx-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/fx-service:${{ github.sha }} -n delivereats
+
+          echo "Esperando 2 minutos para que los servicios se estabilicen..."
+          sleep 120
+
+          # 4. Aplicación de Stack de Monitoreo
+          echo "Aplicando configuración de monitoreo (Prometheus, Grafana, ELK)..."
+          
+          kubectl apply -f Proyecto3/monitoring/prometheus/k8s-prometheus.yaml
+          kubectl apply -f Proyecto3/monitoring/grafana/k8s-grafana.yaml
+          kubectl apply -f Proyecto3/monitoring/elk/elasticsearch.yaml
+          kubectl apply -f Proyecto3/monitoring/elk/kibana.yaml
+          kubectl apply -f Proyecto3/monitoring/elk/k8s-fluent-bit.yaml

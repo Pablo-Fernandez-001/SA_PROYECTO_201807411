@@ -10,6 +10,8 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
       template:
         spec:
           restartPolicy: Never
@@ -28,5 +30,22 @@ spec:
                 - -c
                 - |
                   set -eu
-                  curl -fsS -X POST "${API_GATEWAY_URL}/api/orders/reject-stale" \
-                    -H "Content-Type: application/json"
+                  echo "[$(date)] Starting stale orders rejection..."
+                  
+                  # Call using environment variable
+                  API_URL="${API_GATEWAY_URL}/api/orders/reject-stale"
+                  
+                  curl -fsS \
+                    --max-time 30 \
+                    --retry 2 \
+                    -X POST "$API_URL" \
+                    -H "Content-Type: application/json" && \
+                    echo "[$(date)] ✓ Stale orders rejection completed" || \
+                    echo "[$(date)] ✗ Stale orders rejection failed"
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "256Mi"
