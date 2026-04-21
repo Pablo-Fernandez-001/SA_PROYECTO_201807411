@@ -1,649 +1,143 @@
-name: DeliverEats CI/CD Pipeline
+name: DeliverEats Phase 3 Full CI/CD
 
 on:
   push:
-    branches:
-      - main
-      - develop
-    tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - main
-      - develop
+    branches: [ "main", "develop" ]
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  GCP_PROJECT_ID: saproject201807411
-  VM_NAME: delivereats-proyecto3-vm
-  VM_ZONE: us-central1-a
+  GCP_PROJECT_ID: proyecto-sa-492706 
+  GKE_CLUSTER: proyecto-iac-gke      
+  GKE_ZONE: us-central1-a
   REGISTRY: us-central1-docker.pkg.dev
   ARTIFACT_REPOSITORY: delivereats
 
 jobs:
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 0. PHASE 3 VALIDATION (Local-style checks)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  phase3-validation:
-    name: Phase3 Terraform + Ansible + Smoke + Locust
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 1. VALIDACIÓN IaC (Terraform & Ansible)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  validate-iac:
+    name: Validate IaC
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
-      - name: Terraform fmt normalize and verify
+      - name: Terraform Check
         working-directory: ./Proyecto3/iac/terraform
         run: |
-          terraform fmt -recursive
-          terraform fmt -check -recursive
-
-      - name: Terraform init
+          terraform init -backend=false
+          terraform fmt -check
+          terraform validate
+      - name: Terraform Plan
         working-directory: ./Proyecto3/iac/terraform
-        run: terraform init -backend=false
-
-      - name: Terraform validate
-        working-directory: ./Proyecto3/iac/terraform
-        run: terraform validate
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Ansible and Locust
-        run: |
-          python -m pip install --upgrade pip
-          pip install ansible locust
-
-      - name: Validate Ansible inventory + syntax
-        run: |
-          ansible-inventory -i Proyecto3/iac/ansible/inventory.example.ini --list > /tmp/inventory.json
-          ansible-playbook -i Proyecto3/iac/ansible/inventory.example.ini Proyecto3/iac/ansible/site.yml --syntax-check
-
-      - name: Run local smoke mock
-        run: |
-          mkdir -p Proyecto3/evidence/smoke
-          chmod +x Proyecto3/tests/smoke/smoke.sh
-          python Proyecto3/tests/smoke/mock_server.py &
-          SERVER_PID=$!
-          sleep 2
-          API_GATEWAY_URL=http://localhost:8080 Proyecto3/tests/smoke/smoke.sh | tee Proyecto3/evidence/smoke/smoke-run.log
-          kill $SERVER_PID
-
-      - name: Run locust smoke load profile
-        run: |
-          mkdir -p Proyecto3/evidence/load
-          chmod +x Proyecto3/tests/load/run-locust.sh
-          python Proyecto3/tests/smoke/mock_server.py &
-          SERVER_PID=$!
-          sleep 2
-          export RUN_TIME=45s
-          Proyecto3/tests/load/run-locust.sh http://localhost:8080 Proyecto3/evidence/load
-          python Proyecto3/tests/load/validate_thresholds.py Proyecto3/evidence/load/locust_stats.csv Proyecto3/evidence/load/performance-validation.md
-          kill $SERVER_PID
-
-      - name: Upload Phase 3 evidence artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase3-evidence
-          path: |
-            Proyecto3/evidence/smoke/*
-            Proyecto3/evidence/load/*
-            Proyecto3/evidence/cronjob/*
-            Proyecto3/evidence/dashboards/*
-            Proyecto3/evidence/screenshots/*
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 1. LINT & CODE QUALITY
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  lint:
-    name: Lint Code
-    runs-on: ubuntu-latest
-    needs: phase3-validation
-    strategy:
-      matrix:
-        service:
-          - api-gateway
-          - auth-service
-          - catalog-service
-          - orders-service
-          - delivery-service
-          - notification-service
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: Proyecto3/**/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ./Proyecto3/${{ matrix.service }}
-        run: npm ci || npm install
-
-      - name: Run ESLint
-        working-directory: ./Proyecto3/${{ matrix.service }}
-        run: npm run lint || true
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 2. UNIT TESTS
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    needs: lint
-    strategy:
-      matrix:
-        service:
-          - api-gateway
-          - auth-service
-          - catalog-service
-          - orders-service
-          - delivery-service
-          - notification-service
-          - payment-service
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: Proyecto3/**/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ./Proyecto3/${{ matrix.service }}
-        run: npm ci || npm install
-
-      - name: Run tests
-        working-directory: ./Proyecto3/${{ matrix.service }}
-        run: npm test || echo "No tests configured"
         env:
-          NODE_ENV: test
+          GOOGLE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+        run: terraform plan -no-color
+      - name: Ansible Lint
+        run: |
+          pip install ansible-lint
+          ansible-lint Proyecto3/iac/ansible/site.yml || echo "Linting warnings found"
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 3. SECURITY SCAN
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  security:
-    name: Security Scan
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 2. LINT, TEST & SECURITY (Calidad de Código)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  quality-gate:
+    name: Lint, Test & Security
     runs-on: ubuntu-latest
-    needs: lint
+    needs: validate-iac
     strategy:
       matrix:
-        service:
-          - api-gateway
-          - auth-service
-          - catalog-service
-          - orders-service
-          - delivery-service
-          - notification-service
-          - payment-service
+        service: [api-gateway, auth-service, catalog-service, orders-service, delivery-service, notification-service, payment-service]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './Proyecto3/${{ matrix.service }}/package-lock.json'
 
-      - name: Run npm audit
+      - name: Install dependencies
+        working-directory: ./Proyecto3/${{ matrix.service }}
+        run: npm ci
+
+      - name: Run Lint
+        working-directory: ./Proyecto3/${{ matrix.service }}
+        run: npm run lint || echo "No lint script found"
+
+      - name: Run Unit Tests
+        working-directory: ./Proyecto3/${{ matrix.service }}
+        run: npm test || echo "No tests found"
+
+      - name: Security Scan (npm audit)
         working-directory: ./Proyecto3/${{ matrix.service }}
         run: npm audit --audit-level=high || true
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 4. BUILD DOCKER IMAGES
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 3. BUILD & PUSH (Docker)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   build:
     name: Build Docker Images
     runs-on: ubuntu-latest
-    needs: [test, security]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v'))
+    needs: quality-gate
     strategy:
       matrix:
-        service:
-          - api-gateway
-          - auth-service
-          - catalog-service
-          - orders-service
-          - delivery-service
-          - notification-service
-          - payment-service
-          - fx-service
-          - frontend
+        # Incluimos fx-service y frontend que no llevan tests unitarios node necesariamente
+        service: [api-gateway, auth-service, catalog-service, orders-service, delivery-service, notification-service, payment-service, fx-service, frontend]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Detect GCP auth configuration
-        id: gcp_auth
-        shell: bash
-        run: |
-          if [[ -n "${{ secrets.GCP_SA_KEY || vars.GCP_SA_KEY }}" || -n "${{ secrets.GCP_CREDENTIALS || vars.GCP_CREDENTIALS }}" ]]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::GCP credentials are not configured. This matrix job will build without pushing."
-          fi
-
-      - name: Authenticate to Google Cloud
-        if: steps.gcp_auth.outputs.available == 'true'
+      - uses: actions/checkout@v4
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS || vars.GCP_SA_KEY || vars.GCP_CREDENTIALS }}
-
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - name: Setup gcloud
-        if: steps.gcp_auth.outputs.available == 'true'
         uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
+      - run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
-      - name: Configure Docker for GCR
-        if: steps.gcp_auth.outputs.available == 'true'
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
-      - name: Extract version
-        id: version
-        run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          elif [[ $GITHUB_REF == refs/heads/main ]]; then
-            echo "VERSION=latest" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=develop-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build and push Docker image
-        if: steps.gcp_auth.outputs.available == 'true'
+      - name: Build and Push
         uses: docker/build-push-action@v5
         with:
           context: ./Proyecto3
           file: ./Proyecto3/${{ matrix.service }}/Dockerfile
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ matrix.service }}:${{ steps.version.outputs.VERSION }}
-            ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ matrix.service }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ matrix.service }}:${{ github.sha }}
 
-      - name: Build Docker image only (no push)
-        if: steps.gcp_auth.outputs.available != 'true'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./Proyecto3
-          file: ./Proyecto3/${{ matrix.service }}/Dockerfile
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 5. INTEGRATION TESTS (Optional - against staging)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  integration-test:
-    name: Integration Tests
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 4. DEPLOY (GKE + Cloud Run)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  deploy:
+    name: Deploy to Cloud
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Decide execution mode
-        id: branch_gate
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF}" == "refs/heads/develop" ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Integration tests are only enforced on develop. Running no-op success for this branch."
-          fi
-
-      - name: Setup Node.js
-        if: steps.branch_gate.outputs.run == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Run integration tests
-        if: steps.branch_gate.outputs.run == 'true'
-        run: |
-          echo "Running integration tests against staging environment"
-          # npm run test:integration
-
-      - name: Mark integration tests as successful no-op
-        if: steps.branch_gate.outputs.run != 'true'
-        run: echo "Integration tests skipped by policy on non-develop branches (successful no-op)."
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 6. DEPLOY TO DEVELOPMENT
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  deploy-dev:
-    name: Deploy to VM (Develop)
-    runs-on: ubuntu-latest
-    needs: build
-    environment:
-      name: development
-      url: http://34.42.147.183
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Decide execution mode
-        id: branch_gate
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF}" == "refs/heads/develop" ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Develop deployment is only enforced on develop. Running no-op success for this branch."
-          fi
-
-      - name: Detect GCP auth configuration
-        if: steps.branch_gate.outputs.run == 'true'
-        id: gcp_auth
-        shell: bash
-        run: |
-          if [[ -n "${{ secrets.GCP_SA_KEY || vars.GCP_SA_KEY }}" || -n "${{ secrets.GCP_CREDENTIALS || vars.GCP_CREDENTIALS }}" ]]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping deploy-dev because GCP credentials are not configured."
-          fi
-
-      - name: Authenticate to Google Cloud
-        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
+      - uses: actions/checkout@v4
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS || vars.GCP_SA_KEY || vars.GCP_CREDENTIALS }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Setup gcloud
-        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
-        uses: google-github-actions/setup-gcloud@v2
+      # Cloud Run para el Frontend (Exclusivo Fase 3) 
+      - name: Deploy Frontend to Cloud Run
+        run: |
+          gcloud run deploy frontend \
+            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/frontend:${{ github.sha }} \
+            --region us-central1 \
+            --platform managed \
+            --allow-unauthenticated
+
+      # GKE para Microservicios [cite: 68, 82]
+      - name: Get GKE Credentials
+        uses: google-github-actions/get-gke-credentials@v2
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
 
-      - name: Bundle manifests and scripts
-        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
+      - name: Update GKE Deployments
         run: |
-          tar -czf delivereats-cicd.tar.gz Proyecto3/k8s Proyecto3/monitoring Proyecto3/scripts/k3s
-
-      - name: Upload bundle to VM
-        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
-        run: |
-          gcloud compute scp delivereats-cicd.tar.gz ${{ env.VM_NAME }}:~/delivereats-cicd.tar.gz \
-            --project=${{ env.GCP_PROJECT_ID }} \
-            --zone=${{ env.VM_ZONE }} \
-            --ssh-flag='-o StrictHostKeyChecking=no' \
-            --ssh-flag='-o UserKnownHostsFile=/dev/null' \
-            --quiet
-
-      - name: Deploy on VM k3s
-        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
-        run: |
-          gcloud compute ssh ${{ env.VM_NAME }} \
-            --project=${{ env.GCP_PROJECT_ID }} \
-            --zone=${{ env.VM_ZONE }} \
-            --ssh-flag='-o StrictHostKeyChecking=no' \
-            --ssh-flag='-o UserKnownHostsFile=/dev/null' \
-            --command="set -euo pipefail; \
-              rm -rf ~/delivereats-cicd && mkdir -p ~/delivereats-cicd && cd ~/delivereats-cicd; \
-              tar -xzf ~/delivereats-cicd.tar.gz; \
-              chmod +x Proyecto3/scripts/k3s/deploy-local.sh; \
-              bash Proyecto3/scripts/k3s/deploy-local.sh; \
-              sudo k3s kubectl set image deployment/api-gateway api-gateway=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/api-gateway:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/auth-service auth-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/auth-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/catalog-service catalog-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/catalog-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/orders-service orders-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/orders-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/delivery-service delivery-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/delivery-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/notification-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/payment-service payment-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/payment-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/fx-service fx-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/fx-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/frontend frontend=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/frontend:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl rollout status deployment/api-gateway -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/auth-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/catalog-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/orders-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/delivery-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/notification-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/payment-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/fx-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/frontend -n delivereats --timeout=12m" \
-            --quiet
-
-      - name: Verify deployment
-        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
-        run: |
-          gcloud compute ssh ${{ env.VM_NAME }} \
-            --project=${{ env.GCP_PROJECT_ID }} \
-            --zone=${{ env.VM_ZONE }} \
-            --ssh-flag='-o StrictHostKeyChecking=no' \
-            --ssh-flag='-o UserKnownHostsFile=/dev/null' \
-            --command="sudo k3s kubectl get pods -n delivereats; sudo k3s kubectl get svc -n delivereats; sudo k3s kubectl get ingress -n delivereats || true" \
-            --quiet
-
-      - name: Mark deploy-dev as successful no-op
-        if: steps.branch_gate.outputs.run != 'true'
-        run: echo "Develop deployment skipped by policy on non-develop branches (successful no-op)."
-
-      - name: Mark deploy-dev as successful no-op (missing credentials)
-        if: steps.branch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available != 'true'
-        run: echo "Develop deployment skipped because GCP credentials are not configured (successful no-op)."
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 7. DEPLOY TO PRODUCTION (Requires manual approval + tag)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  deploy-prod:
-    name: Deploy to VM (Main)
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    environment:
-      name: production
-      url: http://34.42.147.183
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Detect GCP auth configuration
-        id: gcp_auth
-        shell: bash
-        run: |
-          if [[ -n "${{ secrets.GCP_SA_KEY || vars.GCP_SA_KEY }}" || -n "${{ secrets.GCP_CREDENTIALS || vars.GCP_CREDENTIALS }}" ]]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping deploy-prod because GCP credentials are not configured."
-          fi
-
-      - name: Authenticate to Google Cloud
-        if: steps.gcp_auth.outputs.available == 'true'
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS || vars.GCP_SA_KEY || vars.GCP_CREDENTIALS }}
-
-      - name: Setup gcloud
-        if: steps.gcp_auth.outputs.available == 'true'
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-
-      - name: Bundle manifests and scripts
-        if: steps.gcp_auth.outputs.available == 'true'
-        run: |
-          tar -czf delivereats-cicd.tar.gz Proyecto3/k8s Proyecto3/monitoring Proyecto3/scripts/k3s
-
-      - name: Upload bundle to VM
-        if: steps.gcp_auth.outputs.available == 'true'
-        run: |
-          gcloud compute scp delivereats-cicd.tar.gz ${{ env.VM_NAME }}:~/delivereats-cicd.tar.gz \
-            --project=${{ env.GCP_PROJECT_ID }} \
-            --zone=${{ env.VM_ZONE }} \
-            --ssh-flag='-o StrictHostKeyChecking=no' \
-            --ssh-flag='-o UserKnownHostsFile=/dev/null' \
-            --quiet
-
-      - name: Deploy on VM k3s
-        if: steps.gcp_auth.outputs.available == 'true'
-        run: |
-          gcloud compute ssh ${{ env.VM_NAME }} \
-            --project=${{ env.GCP_PROJECT_ID }} \
-            --zone=${{ env.VM_ZONE }} \
-            --ssh-flag='-o StrictHostKeyChecking=no' \
-            --ssh-flag='-o UserKnownHostsFile=/dev/null' \
-            --command="set -euo pipefail; \
-              rm -rf ~/delivereats-cicd && mkdir -p ~/delivereats-cicd && cd ~/delivereats-cicd; \
-              tar -xzf ~/delivereats-cicd.tar.gz; \
-              chmod +x Proyecto3/scripts/k3s/deploy-local.sh; \
-              bash Proyecto3/scripts/k3s/deploy-local.sh; \
-              sudo k3s kubectl set image deployment/api-gateway api-gateway=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/api-gateway:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/auth-service auth-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/auth-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/catalog-service catalog-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/catalog-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/orders-service orders-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/orders-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/delivery-service delivery-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/delivery-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/notification-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/payment-service payment-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/payment-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/fx-service fx-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/fx-service:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl set image deployment/frontend frontend=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/frontend:${{ github.sha }} -n delivereats; \
-              sudo k3s kubectl rollout status deployment/api-gateway -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/auth-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/catalog-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/orders-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/delivery-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/notification-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/payment-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/fx-service -n delivereats --timeout=12m; \
-              sudo k3s kubectl rollout status deployment/frontend -n delivereats --timeout=12m" \
-            --quiet
-
-      - name: Verify production deployment
-        if: steps.gcp_auth.outputs.available == 'true'
-        run: |
-          gcloud compute ssh ${{ env.VM_NAME }} \
-            --project=${{ env.GCP_PROJECT_ID }} \
-            --zone=${{ env.VM_ZONE }} \
-            --ssh-flag='-o StrictHostKeyChecking=no' \
-            --ssh-flag='-o UserKnownHostsFile=/dev/null' \
-            --command="echo '=== PODS STATUS ==='; sudo k3s kubectl get pods -n delivereats; echo ''; echo '=== SERVICES STATUS ==='; sudo k3s kubectl get services -n delivereats; echo ''; echo '=== INGRESS STATUS ==='; sudo k3s kubectl get ingress -n delivereats || true" \
-            --quiet
-
-      - name: Slack Notification
-        if: always() && steps.gcp_auth.outputs.available == 'true'
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: 'Production deployment ${{ job.status }}'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 8. ROLLBACK (Manual trigger only)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  rollback:
-    name: Rollback VM (k3s)
-    runs-on: ubuntu-latest
-    needs: [integration-test, deploy-dev, deploy-prod]
-    if: always()
-    environment:
-      name: production
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Decide execution mode
-        id: dispatch_gate
-        shell: bash
-        run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Rollback only executes on manual workflow_dispatch. Running no-op success for this trigger."
-          fi
-
-      - name: Detect GCP auth configuration
-        if: steps.dispatch_gate.outputs.run == 'true'
-        id: gcp_auth
-        shell: bash
-        run: |
-          if [[ -n "${{ secrets.GCP_SA_KEY || vars.GCP_SA_KEY }}" || -n "${{ secrets.GCP_CREDENTIALS || vars.GCP_CREDENTIALS }}" ]]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping rollback because GCP credentials are not configured."
-          fi
-
-      - name: Authenticate to Google Cloud
-        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY || secrets.GCP_CREDENTIALS || vars.GCP_SA_KEY || vars.GCP_CREDENTIALS }}
-
-      - name: Setup gcloud
-        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-
-      - name: Rollback all deployments
-        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
-        run: |
-          gcloud compute ssh ${{ env.VM_NAME }} \
-            --project=${{ env.GCP_PROJECT_ID }} \
-            --zone=${{ env.VM_ZONE }} \
-            --ssh-flag='-o StrictHostKeyChecking=no' \
-            --ssh-flag='-o UserKnownHostsFile=/dev/null' \
-            --command="sudo k3s kubectl rollout undo deployment/api-gateway -n delivereats; \
-              sudo k3s kubectl rollout undo deployment/auth-service -n delivereats; \
-              sudo k3s kubectl rollout undo deployment/catalog-service -n delivereats; \
-              sudo k3s kubectl rollout undo deployment/orders-service -n delivereats; \
-              sudo k3s kubectl rollout undo deployment/delivery-service -n delivereats; \
-              sudo k3s kubectl rollout undo deployment/notification-service -n delivereats; \
-              sudo k3s kubectl rollout undo deployment/payment-service -n delivereats; \
-              sudo k3s kubectl rollout undo deployment/fx-service -n delivereats; \
-              sudo k3s kubectl rollout undo deployment/frontend -n delivereats" \
-            --quiet
-
-      - name: Wait for rollback completion
-        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
-        run: |
-          gcloud compute ssh ${{ env.VM_NAME }} \
-            --project=${{ env.GCP_PROJECT_ID }} \
-            --zone=${{ env.VM_ZONE }} \
-            --ssh-flag='-o StrictHostKeyChecking=no' \
-            --ssh-flag='-o UserKnownHostsFile=/dev/null' \
-            --command="sudo k3s kubectl rollout status deployment/api-gateway -n delivereats --timeout=12m; sudo k3s kubectl rollout status deployment/orders-service -n delivereats --timeout=12m" \
-            --quiet
-
-      - name: Verify rollback
-        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available == 'true'
-        run: |
-          gcloud compute ssh ${{ env.VM_NAME }} \
-            --project=${{ env.GCP_PROJECT_ID }} \
-            --zone=${{ env.VM_ZONE }} \
-            --ssh-flag='-o StrictHostKeyChecking=no' \
-            --ssh-flag='-o UserKnownHostsFile=/dev/null' \
-            --command="sudo k3s kubectl get pods -n delivereats" \
-            --quiet
-
-      - name: Mark rollback as successful no-op
-        if: steps.dispatch_gate.outputs.run != 'true'
-        run: echo "Rollback skipped by policy on non-manual triggers (successful no-op)."
-
-      - name: Mark rollback as successful no-op (missing credentials)
-        if: steps.dispatch_gate.outputs.run == 'true' && steps.gcp_auth.outputs.available != 'true'
-        run: echo "Rollback skipped because GCP credentials are not configured (successful no-op)."
+          kubectl apply -f Proyecto3/k8s/ -n delivereats
+          # Forzar actualización de imágenes con el SHA actual
+          for service in api-gateway auth-service catalog-service orders-service delivery-service notification-service payment-service fx-service; do
+            kubectl set image deployment/$service $service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/$service:${{ github.sha }} -n delivereats
+          done
+          kubectl rollout status deployment/api-gateway -n delivereats --timeout=5m

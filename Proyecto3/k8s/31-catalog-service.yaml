@@ -4,7 +4,7 @@ metadata:
   name: catalog-service
   namespace: delivereats
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: catalog-service
@@ -19,7 +19,7 @@ spec:
         command: ['sh', '-c', "until nc -zv rabbitmq-service 5672; do echo 'Esperando a RabbitMQ...'; sleep 2; done;"]
       containers:
       - name: catalog-service
-        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/catalog-service:v1.0
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/catalog-service:latest
         ports:
         - containerPort: 50052
           name: grpc
@@ -96,10 +96,6 @@ kind: Service
 metadata:
   name: catalog-service
   namespace: delivereats
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/path: "/metrics"
-    prometheus.io/port: "3002"
 spec:
   selector:
     app: catalog-service
@@ -124,8 +120,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: catalog-service
-  minReplicas: 1
-  maxReplicas: 2
+  minReplicas: 2
+  maxReplicas: 8
   metrics:
   - type: Resource
     resource:

@@ -3,12 +3,8 @@ kind: Deployment
 metadata:
   name: api-gateway
   namespace: delivereats
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/path: "/metrics"
-    prometheus.io/port: "80"
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: api-gateway
@@ -19,7 +15,7 @@ spec:
     spec:
       containers:
       - name: api-gateway
-        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/api-gateway:v1.0
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/api-gateway:latest
         ports:
         - containerPort: 3000
           name: http
@@ -59,21 +55,6 @@ spec:
             configMapKeyRef:
               name: api-gateway-config
               key: DELIVERY_SERVICE_URL
-        - name: NOTIFICATION_SERVICE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: api-gateway-config
-              key: NOTIFICATION_SERVICE_URL
-        - name: FX_SERVICE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: api-gateway-config
-              key: FX_SERVICE_URL
-        - name: PAYMENT_SERVICE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: api-gateway-config
-              key: PAYMENT_SERVICE_URL
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
@@ -123,8 +104,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api-gateway
-  minReplicas: 1
-  maxReplicas: 2
+  minReplicas: 3
+  maxReplicas: 10
   metrics:
   - type: Resource
     resource:
