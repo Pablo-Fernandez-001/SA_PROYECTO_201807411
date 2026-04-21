@@ -145,7 +145,7 @@ export default function MyOrders() {
     REEMBOLSADO: 'Reembolsado',
   }
 
-  const canPay = (status) => status === 'PAGADO'
+  const canPay = (status) => status === 'CREADA'
 
   // Orders that can be cancelled by client
   const canCancel = (status) => ['CREADA', 'EN_PROCESO'].includes(status)

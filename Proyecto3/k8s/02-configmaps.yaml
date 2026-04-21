@@ -33,7 +33,7 @@ metadata:
   namespace: delivereats
 data:
   NODE_ENV: "production"
-  PORT: "50053"
+  PORT: "3003"
   DB_HOST: "34.55.202.138"
   DB_PORT: "3306"
   DB_NAME: "orders_db"
@@ -80,12 +80,12 @@ data:
   PORT: "3000"
   AUTH_SERVICE_URL: "auth-service:50051"
   CATALOG_SERVICE_URL: "catalog-service:50052"
-  ORDERS_SERVICE_URL: "http://orders-service:50053"
+  ORDERS_SERVICE_URL: "orders-service:50053"
   DELIVERY_SERVICE_URL: "delivery-service:50054"
   NOTIFICATION_SERVICE_URL: "notification-service:50055"
   FX_SERVICE_URL: "fx-service:5000"
   PAYMENT_SERVICE_URL: "payment-service:3006"
-  FRONTEND_URL: "https://frontend-681870377764.us-central1.run.app/login"
+  FRONTEND_URL: "https://frontend-681870377764.us-central1.run.app"
 ---
 apiVersion: v1
 kind: ConfigMap
