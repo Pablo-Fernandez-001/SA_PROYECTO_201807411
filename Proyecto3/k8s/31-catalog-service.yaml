@@ -19,7 +19,7 @@ spec:
         command: ['sh', '-c', "until nc -zv rabbitmq-service 5672; do echo 'Esperando a RabbitMQ...'; sleep 2; done;"]
       containers:
       - name: catalog-service
-        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/catalog-service:latest
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/catalog-service:v1.0.0
         ports:
         - containerPort: 50052
           name: grpc

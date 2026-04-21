@@ -186,9 +186,12 @@ jobs:
 
       - name: Update GKE Deployments
         run: |
+          kubectl delete -f Proyecto3/k8s/ -n delivereats --ignore-not-found=true || true
           kubectl apply -f Proyecto3/k8s/ -n delivereats
-          # Forzar actualización de imágenes con el SHA actual
-          for service in api-gateway auth-service catalog-service orders-service delivery-service notification-service payment-service fx-service; do
-            kubectl set image deployment/$service $service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/$service:${{ github.sha }} -n delivereats
-          done
-          kubectl rollout status deployment/api-gateway -n delivereats --timeout=5m
+          
+          kubectl set image deployment/auth-service auth-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/auth-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/catalog-service catalog-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/catalog-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/orders-service orders-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/orders-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/delivery-service delivery-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/delivery-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/notification-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/payment-service payment-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/payment-service:${{ github.sha }} -n delivereats

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: api-gateway
-        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/api-gateway:latest
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/api-gateway:v1.0.0
         ports:
         - containerPort: 3000
           name: http
