@@ -86,13 +86,14 @@ metadata:
   name: api-gateway
   namespace: delivereats
 spec:
+  type: LoadBalancer
+  loadBalancerIP: 34.67.27.144  # <--- Debe ir aquí, al nivel de spec
   selector:
-    app: api-gateway
+    app: api-gateway            # <--- El selector solo debe tener las etiquetas del pod
   ports:
   - protocol: TCP
     port: 80
     targetPort: 3000
-  type: LoadBalancer
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
