@@ -1,5 +1,5 @@
 resource "google_sql_database_instance" "mock_db" {
-  name             = "${var.project_name}-db-sa-v1"
+  name             = "${var.project_name}-db-sa-f3"
   # Cambiado a MySQL 8.0 (la versión más común actualmente)
   database_version = "MYSQL_8_0" 
   region           = var.gcp_region
