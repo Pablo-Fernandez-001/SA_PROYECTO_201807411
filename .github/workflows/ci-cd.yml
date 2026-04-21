@@ -188,10 +188,12 @@ jobs:
         run: |
           kubectl delete -f Proyecto3/k8s/ -n delivereats --ignore-not-found=true || true
           kubectl apply -f Proyecto3/k8s/ -n delivereats
-          
+
+          kubectl set image deployment/api-gateway api-gateway=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/api-gateway:${{ github.sha }} -n delivereats          
           kubectl set image deployment/auth-service auth-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/auth-service:${{ github.sha }} -n delivereats
           kubectl set image deployment/catalog-service catalog-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/catalog-service:${{ github.sha }} -n delivereats
           kubectl set image deployment/orders-service orders-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/orders-service:${{ github.sha }} -n delivereats
           kubectl set image deployment/delivery-service delivery-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/delivery-service:${{ github.sha }} -n delivereats
           kubectl set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/notification-service:${{ github.sha }} -n delivereats
           kubectl set image deployment/payment-service payment-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/payment-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/fx-service fx-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/fx-service:${{ github.sha }} -n delivereats
