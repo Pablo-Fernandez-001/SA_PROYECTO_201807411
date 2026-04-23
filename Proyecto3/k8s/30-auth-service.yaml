@@ -94,12 +94,13 @@ spec:
     app: auth-service
   ports:
   - protocol: TCP
+    name: grpc
     port: 50051
     targetPort: 50051
   - protocol: TCP
+    name: metrics
     port: 9101
     targetPort: 9101
-    name: metrics
   type: ClusterIP
 ---
 apiVersion: autoscaling/v2
