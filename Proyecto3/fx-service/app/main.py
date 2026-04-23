@@ -12,11 +12,14 @@ from app.services.fx_service import fx_service
 from app.services.cache_service import cache_service
 import threading
 import time
+from time import perf_counter
 
 app = Flask(__name__)
 CORS(app)
 started_at = int(time.time())
 http_counters = {}
+http_duration = {}
+duration_buckets = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
 
 
 @app.before_request
@@ -24,8 +27,36 @@ def collect_http_metrics():
     path = request.path
     if path == '/metrics':
         return
+    request.environ['metrics_started_at'] = perf_counter()
     metric_key = (request.method, path)
     http_counters[metric_key] = http_counters.get(metric_key, 0) + 1
+
+
+@app.after_request
+def collect_http_latency(response):
+    path = request.path
+    if path == '/metrics':
+        return response
+
+    started = request.environ.get('metrics_started_at')
+    if started is None:
+        return response
+
+    duration_seconds = perf_counter() - started
+    metric_key = (request.method, path, str(response.status_code))
+    current = http_duration.get(metric_key, {
+        'count': 0,
+        'sum': 0.0,
+        'buckets': [0 for _ in duration_buckets]
+    })
+    current['count'] += 1
+    current['sum'] += duration_seconds
+    for i, le in enumerate(duration_buckets):
+        if duration_seconds <= le:
+            current['buckets'][i] += 1
+    http_duration[metric_key] = current
+
+    return response
 
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
@@ -148,6 +179,24 @@ def metrics():
     for (method, path), count in http_counters.items():
         safe_path = path.replace('"', '')
         lines.append(f'http_requests_total{{service="fx-service",method="{method}",route="{safe_path}"}} {count}')
+
+    lines.append('# HELP http_request_duration_seconds HTTP request duration in seconds')
+    lines.append('# TYPE http_request_duration_seconds histogram')
+    for (method, path, status), metric in http_duration.items():
+        safe_path = path.replace('"', '')
+        for i, le in enumerate(duration_buckets):
+            lines.append(
+                f'http_request_duration_seconds_bucket{{service="fx-service",method="{method}",route="{safe_path}",status="{status}",le="{le}"}} {metric["buckets"][i]}'
+            )
+        lines.append(
+            f'http_request_duration_seconds_bucket{{service="fx-service",method="{method}",route="{safe_path}",status="{status}",le="+Inf"}} {metric["count"]}'
+        )
+        lines.append(
+            f'http_request_duration_seconds_sum{{service="fx-service",method="{method}",route="{safe_path}",status="{status}"}} {metric["sum"]}'
+        )
+        lines.append(
+            f'http_request_duration_seconds_count{{service="fx-service",method="{method}",route="{safe_path}",status="{status}"}} {metric["count"]}'
+        )
 
     payload = '\n'.join(lines) + '\n'
     return Response(payload, mimetype='text/plain; version=0.0.4; charset=utf-8')

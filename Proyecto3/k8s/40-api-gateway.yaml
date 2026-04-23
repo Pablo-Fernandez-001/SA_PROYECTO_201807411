@@ -3,6 +3,10 @@ kind: Deployment
 metadata:
   name: api-gateway
   namespace: delivereats
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: "80"
 spec:
   replicas: 3
   selector:

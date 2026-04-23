@@ -2,6 +2,8 @@
 
 This folder contains runnable observability assets for DeliverEats.
 
+See `ARCHITECTURE.md` for the project-oriented observability design, rationale, and differences versus the lab implementation in `practicas`.
+
 ## Included stack
 - Prometheus manifests and scrape configuration under `prometheus/`
 - Grafana deployment + datasource/dashboard provisioning under `grafana/`

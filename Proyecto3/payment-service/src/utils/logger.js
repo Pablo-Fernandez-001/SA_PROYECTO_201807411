@@ -4,10 +4,10 @@ const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.printf(({ level, message, timestamp }) => {
-      return `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-    })
+    winston.format.errors({ stack: true }),
+    winston.format.json()
   ),
+  defaultMeta: { service: 'payment-service' },
   transports: [new winston.transports.Console()]
 });
 
