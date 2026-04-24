@@ -21,6 +21,12 @@ spec:
               value: http://elasticsearch:9200
             - name: XPACK_SECURITY_ENABLED
               value: "false"
+            - name: SERVER_HOST
+              value: 0.0.0.0
+            - name: SERVER_PUBLICBASEURL
+              value: http://35.202.231.132:5601
+            - name: TELEMETRY_ENABLED
+              value: "false"
           ports:
             - containerPort: 5601
           resources:
@@ -41,6 +47,12 @@ spec:
               path: /api/status
               port: 5601
             initialDelaySeconds: 40
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /api/status
+              port: 5601
+            failureThreshold: 30
             periodSeconds: 10
 ---
 apiVersion: v1
