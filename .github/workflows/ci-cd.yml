@@ -98,8 +98,8 @@ jobs:
             Proyecto3/evidence/dashboards/*
             Proyecto3/evidence/screenshots/*
 
-  quality-gate:
-    name: Lint, Test & Security
+  lint:
+    name: Code Linting
     runs-on: ubuntu-latest
     needs: phase3-validation
     strategy:
@@ -131,9 +131,67 @@ jobs:
         working-directory: ./Proyecto3/${{ matrix.service }}
         run: npm run lint || echo "No lint script found"
 
+  test:
+    name: Unit Testing
+    runs-on: ubuntu-latest
+    needs: phase3-validation
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - catalog-service
+          - orders-service
+          - delivery-service
+          - notification-service
+          - payment-service
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ./Proyecto3/${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./Proyecto3/${{ matrix.service }}
+        run: npm ci || npm install
+
       - name: Run unit tests
         working-directory: ./Proyecto3/${{ matrix.service }}
         run: npm test || echo "No tests found"
+
+  security-audit:
+    name: Security & NPM Audit
+    runs-on: ubuntu-latest
+    needs: phase3-validation
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - catalog-service
+          - orders-service
+          - delivery-service
+          - notification-service
+          - payment-service
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ./Proyecto3/${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./Proyecto3/${{ matrix.service }}
+        run: npm ci || npm install
 
       - name: Run npm audit
         working-directory: ./Proyecto3/${{ matrix.service }}
@@ -142,7 +200,7 @@ jobs:
   deploy:
     name: Deploy to Cloud
     runs-on: ubuntu-latest
-    needs: quality-gate # Changed from 'build' since 'build' is missing
+    needs: [lint, test, security-audit] # Modificado para esperar a que los 3 jobs terminen
     steps:
       - uses: actions/checkout@v4
       
