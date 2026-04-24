@@ -18,13 +18,17 @@ spec:
           image: docker.elastic.co/kibana/kibana:8.14.1
           env:
             - name: ELASTICSEARCH_HOSTS
-              value: http://elasticsearch:9200
+              value: '["http://elasticsearch.delivereats.svc.cluster.local:9200"]'
             - name: XPACK_SECURITY_ENABLED
               value: "false"
+            - name: SERVER_NAME
+              value: kibana-delivereats
             - name: SERVER_HOST
               value: 0.0.0.0
             - name: SERVER_PUBLICBASEURL
               value: http://35.202.231.132:5601
+            - name: ELASTICSEARCH_REQUESTTIMEOUT
+              value: "60000"
             - name: TELEMETRY_ENABLED
               value: "false"
           ports:
