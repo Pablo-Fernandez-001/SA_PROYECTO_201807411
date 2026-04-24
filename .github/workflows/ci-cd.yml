@@ -104,7 +104,14 @@ jobs:
     needs: phase3-validation
     strategy:
       matrix:
-        service: [api-gateway, auth-service, catalog-service, orders-service, delivery-service, notification-service, payment-service]
+        service:
+          - api-gateway
+          - auth-service
+          - catalog-service
+          - orders-service
+          - delivery-service
+          - notification-service
+          - payment-service
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
