@@ -21,14 +21,8 @@ spec:
               value: '["http://elasticsearch.delivereats.svc.cluster.local:9200"]'
             - name: XPACK_SECURITY_ENABLED
               value: "false"
-            - name: SERVER_NAME
-              value: kibana-delivereats
             - name: SERVER_HOST
-              value: 0.0.0.0
-            - name: SERVER_PUBLICBASEURL
-              value: http://35.202.231.132:5601
-            - name: ELASTICSEARCH_REQUESTTIMEOUT
-              value: "60000"
+              value: "0.0.0.0"
             - name: TELEMETRY_ENABLED
               value: "false"
           ports:
