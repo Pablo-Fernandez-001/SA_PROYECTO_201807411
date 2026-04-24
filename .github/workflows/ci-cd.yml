@@ -342,29 +342,47 @@ jobs:
   rollback:
     name: Rollback GKE
     runs-on: ubuntu-latest
-    if: |
-      always() &&
-      (
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'rollback') ||
-        (github.event_name != 'workflow_dispatch' && needs.deploy.result == 'failure')
-      )
+    if: always()
     needs:
       - deploy
     steps:
+      - name: Decide rollback mode
+        id: rollback_mode
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.operation }}" == "rollback" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=manual" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" != "workflow_dispatch" && "${{ needs.deploy.result }}" == "failure" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=deploy_failure" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=noop" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip rollback with successful no-op
+        if: steps.rollback_mode.outputs.run != 'true'
+        run: echo "Rollback not required for this execution. Job completed as successful no-op."
+
       - name: Checkout code
+        if: steps.rollback_mode.outputs.run == 'true'
         uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
+        if: steps.rollback_mode.outputs.run == 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup gcloud
+        if: steps.rollback_mode.outputs.run == 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Get GKE credentials
+        if: steps.rollback_mode.outputs.run == 'true'
         uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ env.GKE_CLUSTER }}
@@ -372,6 +390,7 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Show rollout history before rollback
+        if: steps.rollback_mode.outputs.run == 'true'
         shell: bash
         run: |
           for svc in ${{ env.K8S_DEPLOYMENTS }}; do
@@ -380,6 +399,7 @@ jobs:
           done
 
       - name: Rollback Kubernetes deployments
+        if: steps.rollback_mode.outputs.run == 'true'
         shell: bash
         run: |
           REVISION="${{ github.event.inputs.rollback_revision }}"
@@ -393,6 +413,7 @@ jobs:
           done
 
       - name: Wait for rollback completion
+        if: steps.rollback_mode.outputs.run == 'true'
         shell: bash
         run: |
           for svc in ${{ env.K8S_DEPLOYMENTS }}; do
@@ -400,7 +421,7 @@ jobs:
           done
 
       - name: Rollback Cloud Run frontend traffic
-        if: github.event.inputs.rollback_frontend_revision != ''
+        if: steps.rollback_mode.outputs.run == 'true' && github.event.inputs.rollback_frontend_revision != ''
         run: |
           gcloud run services update-traffic ${{ env.FRONTEND_SERVICE }} \
             --region ${{ env.GCP_REGION }} \
@@ -408,6 +429,7 @@ jobs:
             --project ${{ env.GCP_PROJECT_ID }}
 
       - name: Verify rollback
+        if: steps.rollback_mode.outputs.run == 'true'
         run: |
           kubectl get pods -n ${{ env.K8S_NAMESPACE }}
           kubectl get rs -n ${{ env.K8S_NAMESPACE }}
