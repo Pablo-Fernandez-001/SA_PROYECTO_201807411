@@ -12,6 +12,23 @@ on:
       - main
       - develop
   workflow_dispatch:
+    inputs:
+      operation:
+        description: "Operacion a ejecutar"
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - rollback
+      rollback_revision:
+        description: "Revision de Kubernetes a restaurar. Deja vacio para volver a la anterior."
+        required: false
+        type: string
+      rollback_frontend_revision:
+        description: "Revision de Cloud Run para frontend. Deja vacio para no cambiar trafico."
+        required: false
+        type: string
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -22,11 +39,14 @@ env:
   REGISTRY: us-central1-docker.pkg.dev
   ARTIFACT_REPOSITORY: delivereats
   FRONTEND_SERVICE: frontend
+  K8S_NAMESPACE: delivereats
+  K8S_DEPLOYMENTS: "api-gateway auth-service catalog-service orders-service delivery-service notification-service payment-service fx-service"
 
 jobs:
   phase3-validation:
     name: Phase3 Terraform + Ansible + Smoke + Locust
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.operation != 'rollback'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -101,6 +121,7 @@ jobs:
   lint:
     name: Code Linting
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.operation != 'rollback'
     needs: phase3-validation
     strategy:
       matrix:
@@ -134,6 +155,7 @@ jobs:
   test:
     name: Unit Testing
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.operation != 'rollback'
     needs: phase3-validation
     strategy:
       matrix:
@@ -167,6 +189,7 @@ jobs:
   security-audit:
     name: Security & NPM Audit
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.operation != 'rollback'
     needs: phase3-validation
     strategy:
       matrix:
@@ -196,26 +219,42 @@ jobs:
       - name: Run npm audit
         working-directory: ./Proyecto3/${{ matrix.service }}
         run: npm audit --audit-level=high || true
-        
+
   build-and-push:
     name: Build Docker Images
     runs-on: ubuntu-latest
-    needs: [lint, test, security-audit] # Modificado para esperar a que los 3 jobs terminen
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.operation != 'rollback'
+    needs: [lint, test, security-audit]
     strategy:
       matrix:
-        # Incluimos fx-service y frontend que no llevan tests unitarios node necesariamente
-        service: [api-gateway, auth-service, catalog-service, orders-service, delivery-service, notification-service, payment-service, fx-service, frontend]
+        service:
+          - api-gateway
+          - auth-service
+          - catalog-service
+          - orders-service
+          - delivery-service
+          - notification-service
+          - payment-service
+          - fx-service
+          - frontend
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
-      - run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Build and Push
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: ./Proyecto3
@@ -226,41 +265,53 @@ jobs:
   deploy:
     name: Deploy to Cloud
     runs-on: ubuntu-latest
-    needs: [build-and-push] # Modificado para esperar a que los 3 jobs terminen
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy'
+    needs: [build-and-push]
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Deploy Frontend to Cloud Run
-        run: |
-          gcloud run deploy frontend \
-            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/frontend:${{ github.sha }} \
-            --region us-central1 \
-            --platform managed \
-            --allow-unauthenticated
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Get GKE Credentials
+      - name: Deploy frontend to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.FRONTEND_SERVICE }} \
+            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/frontend:${{ github.sha }} \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --project ${{ env.GCP_PROJECT_ID }}
+
+      - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ env.GKE_CLUSTER }}
           location: ${{ env.GKE_ZONE }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Update GKE Deployments
+      - name: Apply manifests and update images
+        shell: bash
         run: |
-          kubectl apply -f Proyecto3/k8s/ -n delivereats
-          
-          # Actualización de imágenes
-          SERVICES=(api-gateway auth-service catalog-service orders-service delivery-service notification-service payment-service fx-service)
-          for svc in "${SERVICES[@]}"; do
-            kubectl set image deployment/$svc $svc=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/$svc:${{ github.sha }} -n delivereats
+          kubectl apply -f Proyecto3/k8s/ -n ${{ env.K8S_NAMESPACE }}
+
+          for svc in ${{ env.K8S_DEPLOYMENTS }}; do
+            kubectl set image deployment/$svc $svc=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/$svc:${{ github.sha }} -n ${{ env.K8S_NAMESPACE }}
           done
-          
-          echo "Esperando a que los servicios se estabilicen..."
-          sleep 120
+
+      - name: Wait for deployments
+        shell: bash
+        run: |
+          for svc in ${{ env.K8S_DEPLOYMENTS }}; do
+            kubectl rollout status deployment/$svc -n ${{ env.K8S_NAMESPACE }} --timeout=12m
+          done
 
       - name: Apply monitoring stack
         run: |
@@ -270,13 +321,22 @@ jobs:
           kubectl apply -f Proyecto3/monitoring/elk/kibana.yaml
           kubectl apply -f Proyecto3/monitoring/elk/k8s-fluent-bit.yaml
 
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+          kubectl get svc -n ${{ env.K8S_NAMESPACE }}
+
   rollback:
     name: Rollback GKE
     runs-on: ubuntu-latest
     if: |
-      always() && 
-      (contains(needs.deploy.result, 'failure') || github.event_name == 'workflow_dispatch')
-    needs: deploy
+      always() &&
+      (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'rollback') ||
+        (github.event_name != 'workflow_dispatch' && needs.deploy.result == 'failure')
+      )
+    needs:
+      - deploy
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -286,6 +346,11 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
@@ -293,13 +358,43 @@ jobs:
           location: ${{ env.GKE_ZONE }}
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Rollback all deployments
+      - name: Show rollout history before rollback
+        shell: bash
         run: |
-          SERVICES=(api-gateway auth-service catalog-service orders-service delivery-service notification-service payment-service fx-service)
-          for svc in "${SERVICES[@]}"; do
-            echo "Rolling back $svc..."
-            kubectl rollout undo deployment/$svc -n delivereats
+          for svc in ${{ env.K8S_DEPLOYMENTS }}; do
+            echo "=== History for $svc ==="
+            kubectl rollout history deployment/$svc -n ${{ env.K8S_NAMESPACE }} || true
           done
 
-      - name: Verify rollback status
-        run: kubectl get pods -n delivereats
+      - name: Rollback Kubernetes deployments
+        shell: bash
+        run: |
+          REVISION="${{ github.event.inputs.rollback_revision }}"
+          for svc in ${{ env.K8S_DEPLOYMENTS }}; do
+            echo "Rolling back $svc"
+            if [[ -n "$REVISION" ]]; then
+              kubectl rollout undo deployment/$svc -n ${{ env.K8S_NAMESPACE }} --to-revision="$REVISION"
+            else
+              kubectl rollout undo deployment/$svc -n ${{ env.K8S_NAMESPACE }}
+            fi
+          done
+
+      - name: Wait for rollback completion
+        shell: bash
+        run: |
+          for svc in ${{ env.K8S_DEPLOYMENTS }}; do
+            kubectl rollout status deployment/$svc -n ${{ env.K8S_NAMESPACE }} --timeout=12m
+          done
+
+      - name: Rollback Cloud Run frontend traffic
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.rollback_frontend_revision != ''
+        run: |
+          gcloud run services update-traffic ${{ env.FRONTEND_SERVICE }} \
+            --region ${{ env.GCP_REGION }} \
+            --to-revisions ${{ github.event.inputs.rollback_frontend_revision }}=100 \
+            --project ${{ env.GCP_PROJECT_ID }}
+
+      - name: Verify rollback
+        run: |
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+          kubectl get rs -n ${{ env.K8S_NAMESPACE }}
