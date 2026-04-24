@@ -15,10 +15,12 @@ spec:
     spec:
       containers:
       - name: delivery-service
-        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/delivery-service:latest
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/delivery-service:v1.0.0
         ports:
-        - containerPort: 50054
+        - containerPort: 50053
           name: grpc
+        - containerPort: 3004   # <--- AGREGAR ESTO
+          name: http
         env:
         - name: NODE_ENV
           valueFrom:
@@ -74,12 +76,12 @@ spec:
             cpu: "500m"
         livenessProbe:
           tcpSocket:
-            port: 50054
+            port: 3004
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           tcpSocket:
-            port: 50054
+            port: 3004
           initialDelaySeconds: 10
           periodSeconds: 5
 ---
@@ -91,11 +93,16 @@ metadata:
 spec:
   selector:
     app: delivery-service
+  type: ClusterIP
   ports:
-  - protocol: TCP
+  - name: grpc
+    protocol: TCP
     port: 50054
     targetPort: 50054
-  type: ClusterIP
+  - name: http
+    protocol: TCP
+    port: 3004
+    targetPort: 3004
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

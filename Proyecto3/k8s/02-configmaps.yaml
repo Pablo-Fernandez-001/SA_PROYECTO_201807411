@@ -6,7 +6,7 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "50051"
-  DB_HOST: "auth-db-service"
+  DB_HOST: "34.55.202.138"
   DB_PORT: "3306"
   DB_NAME: "auth_db"
 ---
@@ -18,7 +18,7 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3002"
-  DB_HOST: "catalog-db-service"
+  DB_HOST: "34.55.202.138"
   DB_PORT: "3306"
   DB_NAME: "catalog_db"
   REDIS_HOST: "redis"
@@ -33,8 +33,8 @@ metadata:
   namespace: delivereats
 data:
   NODE_ENV: "production"
-  PORT: "50053"
-  DB_HOST: "orders-db-service"
+  PORT: "3003"
+  DB_HOST: "34.55.202.138"
   DB_PORT: "3306"
   DB_NAME: "orders_db"
   RABBITMQ_URL: "amqp://delivereats:rabbitmq2024@rabbitmq-service.delivereats.svc.cluster.local:5672/"
@@ -50,11 +50,11 @@ metadata:
   namespace: delivereats
 data:
   NODE_ENV: "production"
-  PORT: "50054"
-  DB_HOST: "delivery-db-service"
+  PORT: "3004"
+  DB_HOST: "34.55.202.138"
   DB_PORT: "3306"
   DB_NAME: "delivery_db"
-  ORDERS_SERVICE_URL: "http://orders-service:50053"
+  ORDERS_SERVICE_URL: "http://orders-service:3003"
   NOTIFICATION_SERVICE_URL: "http://notification-service:50055"
 ---
 apiVersion: v1
@@ -80,12 +80,12 @@ data:
   PORT: "3000"
   AUTH_SERVICE_URL: "auth-service:50051"
   CATALOG_SERVICE_URL: "catalog-service:50052"
-  ORDERS_SERVICE_URL: "http://orders-service:50053"
-  DELIVERY_SERVICE_URL: "delivery-service:50054"
+  ORDERS_SERVICE_URL: "orders-service:50053"
+  DELIVERY_SERVICE_URL: "delivery-service:3004"
   NOTIFICATION_SERVICE_URL: "notification-service:50055"
   FX_SERVICE_URL: "fx-service:5000"
   PAYMENT_SERVICE_URL: "payment-service:3006"
-  FRONTEND_URL: "https://proyecto-iac-frontend-681870377764.us-central1.run.app"
+  FRONTEND_URL: "https://frontend-681870377764.us-central1.run.app"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -95,10 +95,10 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3006"
-  DB_HOST: "payment-db-service"
+  DB_HOST: "34.55.202.138"
   DB_PORT: "3306"
   DB_NAME: "payment_db"
-  ORDERS_SERVICE_URL: "http://orders-service:50053"
+  ORDERS_SERVICE_URL: "http://orders-service:3003"
   FX_SERVICE_URL: "http://fx-service:5000"
   NOTIFICATION_SERVICE_URL: "http://notification-service:50055"
 ---
@@ -128,4 +128,4 @@ metadata:
   name: delivereats-config
   namespace: delivereats
 data:
-  apiGatewayUrl: "http://api-gateway:3000"
+  apiGatewayUrl: "http://api-gateway:80"

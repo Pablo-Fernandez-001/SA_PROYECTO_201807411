@@ -44,9 +44,11 @@ router.get('/', authMiddleware, authorize(['REPARTIDOR', 'ADMIN']), async (req, 
 router.get('/available-orders', authMiddleware, authorize(['REPARTIDOR', 'ADMIN']), async (req, res) => {
   try {
     const { data } = await axios.get(`${DELIVERY_URL}/api/deliveries/available-orders`)
+    console.log('Available orders response:', data)
     res.json({ success: true, data })
   } catch (error) {
     logger.error('Delivery proxy error (available-orders):', error.message)
+    console.log(error.response?.data)
     res.status(error.response?.status || 502).json({ success: false, message: 'Error al obtener órdenes disponibles' })
   }
 })

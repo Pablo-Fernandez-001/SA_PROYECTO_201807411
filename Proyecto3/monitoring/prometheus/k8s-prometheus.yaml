@@ -81,6 +81,9 @@ spec:
       labels:
         app: prometheus
     spec:
+      securityContext:      # <--- ¡AGREGA ESTE BLOQUE!
+        fsGroup: 65534
+        runAsUser: 65534
       serviceAccountName: prometheus
       containers:
         - name: prometheus

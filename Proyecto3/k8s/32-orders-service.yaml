@@ -15,10 +15,12 @@ spec:
     spec:
       containers:
       - name: orders-service
-        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/orders-service:latest
+        image: us-central1-docker.pkg.dev/proyecto-sa-492706/delivereats/orders-service:v1.0.0
         ports:
         - containerPort: 50053
           name: grpc
+        - containerPort: 3003   # <--- AGREGAR ESTO
+          name: http
         env:
         - name: NODE_ENV
           valueFrom:
@@ -89,12 +91,12 @@ spec:
             cpu: "700m"
         livenessProbe:
           tcpSocket:
-            port: 50053
+            port: 3003
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           tcpSocket:
-            port: 50053
+            port: 3003
           initialDelaySeconds: 10
           periodSeconds: 5
 ---
@@ -107,9 +109,14 @@ spec:
   selector:
     app: orders-service
   ports:
-  - protocol: TCP
+  - name: grpc
+    protocol: TCP
     port: 50053
     targetPort: 50053
+  - name: http          # <--- AGREGAR ESTO
+    protocol: TCP
+    port: 3003          # El puerto que busca el Gateway
+    targetPort: 3003
   type: ClusterIP
 ---
 apiVersion: autoscaling/v2

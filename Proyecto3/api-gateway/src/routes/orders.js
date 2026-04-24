@@ -54,6 +54,13 @@ router.post('/', authMiddleware, authorize(['CLIENTE', 'ADMIN']), async (req, re
     const io = req.app.get('io')
     io.emit('order:created', { order: data.order || data, userId: req.user.id, restaurantId: req.body.restaurantId })
 
+    logger.info('Order created', {
+      orderId: data.order.id,
+      restaurantId: data.order.restaurant_id,
+      totalAmount: data.order.total_amount,
+      userId: data.order.user_id
+    })
+
     res.status(201).json(data) // forward full response (includes validation info)
   } catch (error) {
     logger.error('Orders proxy error (create):', error.message)
@@ -127,6 +134,40 @@ router.post('/:id/reject', authMiddleware, authorize(['RESTAURANTE', 'ADMIN']), 
       return res.status(error.response.status).json(error.response.data)
     }
     res.status(error.response?.status || 502).json({ success: false, message: 'Error al rechazar la orden' })
+  }
+})
+
+// Reject stale orders (auto-rejected after 1 hour)
+router.post('/reject-stale', async (req, res) => {
+  try {
+    // Buscar órdenes PENDIENTE/CONFIRMADA hace > 1 hora
+    const staleOrders = await Order.findAll({
+      where: {
+        status: ['PENDING', 'CONFIRMED'],
+        createdAt: {
+          [Op.lt]: new Date(Date.now() - 60 * 60 * 1000) // Hace 1 hora
+        }
+      }
+    });
+    
+    // Rechazarlas
+    await Promise.all(
+      staleOrders.map(order => 
+        order.update({ 
+          status: 'REJECTED',
+          rejectedAt: new Date(),
+          rejectionReason: 'Auto-rejected by system after 1 hour'
+        })
+      )
+    );
+    
+    res.json({ 
+      success: true, 
+      rejectedCount: staleOrders.length 
+    });
+  } catch (error) {
+    logger.error('Error rejecting stale orders', error);
+    res.status(500).json({ error: 'Failed to reject stale orders' });
   }
 })
 

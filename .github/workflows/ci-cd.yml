@@ -16,28 +16,79 @@ jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 1. VALIDACIÓN IaC (Terraform & Ansible)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  validate-iac:
-    name: Validate IaC
+  phase3-validation:
+    name: Phase3 Terraform + Ansible + Smoke + Locust
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-      - name: Terraform Check
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt normalize and verify
         working-directory: ./Proyecto3/iac/terraform
         run: |
-          terraform init -backend=false
-          terraform fmt -check
-          terraform validate
-      - name: Terraform Plan
+          terraform fmt -recursive
+          terraform fmt -check -recursive
+
+      - name: Terraform init
         working-directory: ./Proyecto3/iac/terraform
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
-        run: terraform plan -no-color
-      - name: Ansible Lint
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        working-directory: ./Proyecto3/iac/terraform
+        run: terraform validate
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible and Locust
         run: |
-          pip install ansible-lint
-          ansible-lint Proyecto3/iac/ansible/site.yml || echo "Linting warnings found"
+          python -m pip install --upgrade pip
+          pip install ansible locust
+
+      - name: Validate Ansible inventory + syntax
+        run: |
+          ansible-inventory -i Proyecto3/iac/ansible/inventory.example.ini --list > /tmp/inventory.json
+          ansible-playbook -i Proyecto3/iac/ansible/inventory.example.ini Proyecto3/iac/ansible/site.yml --syntax-check
+
+      - name: Run local smoke mock
+        run: |
+          mkdir -p Proyecto3/evidence/smoke
+          chmod +x Proyecto3/tests/smoke/smoke.sh
+          python Proyecto3/tests/smoke/mock_server.py &
+          SERVER_PID=$!
+          sleep 2
+          API_GATEWAY_URL=http://localhost:8080 Proyecto3/tests/smoke/smoke.sh | tee Proyecto3/evidence/smoke/smoke-run.log
+          kill $SERVER_PID
+
+      - name: Run locust smoke load profile
+        run: |
+          mkdir -p Proyecto3/evidence/load
+          chmod +x Proyecto3/tests/load/run-locust.sh
+          python Proyecto3/tests/smoke/mock_server.py &
+          SERVER_PID=$!
+          sleep 2
+          export RUN_TIME=45s
+          Proyecto3/tests/load/run-locust.sh http://localhost:8080 Proyecto3/evidence/load
+          python Proyecto3/tests/load/validate_thresholds.py Proyecto3/evidence/load/locust_stats.csv Proyecto3/evidence/load/performance-validation.md
+          kill $SERVER_PID
+
+      - name: Upload Phase 3 evidence artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-evidence
+          path: |
+            Proyecto3/evidence/smoke/*
+            Proyecto3/evidence/load/*
+            Proyecto3/evidence/cronjob/*
+            Proyecto3/evidence/dashboards/*
+            Proyecto3/evidence/screenshots/*
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 2. LINT, TEST & SECURITY (Calidad de Código)
@@ -45,7 +96,7 @@ jobs:
   quality-gate:
     name: Lint, Test & Security
     runs-on: ubuntu-latest
-    needs: validate-iac
+    needs: phase3-validation
     strategy:
       matrix:
         service: [api-gateway, auth-service, catalog-service, orders-service, delivery-service, notification-service, payment-service]
@@ -135,9 +186,26 @@ jobs:
 
       - name: Update GKE Deployments
         run: |
+          kubectl delete -f Proyecto3/k8s/ -n delivereats --ignore-not-found=true || true
           kubectl apply -f Proyecto3/k8s/ -n delivereats
-          # Forzar actualización de imágenes con el SHA actual
-          for service in api-gateway auth-service catalog-service orders-service delivery-service notification-service payment-service fx-service; do
-            kubectl set image deployment/$service $service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/$service:${{ github.sha }} -n delivereats
-          done
-          kubectl rollout status deployment/api-gateway -n delivereats --timeout=5m
+
+          kubectl set image deployment/api-gateway api-gateway=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/api-gateway:${{ github.sha }} -n delivereats          
+          kubectl set image deployment/auth-service auth-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/auth-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/catalog-service catalog-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/catalog-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/orders-service orders-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/orders-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/delivery-service delivery-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/delivery-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/notification-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/payment-service payment-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/payment-service:${{ github.sha }} -n delivereats
+          kubectl set image deployment/fx-service fx-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/fx-service:${{ github.sha }} -n delivereats
+
+          echo "Esperando 2 minutos para que los servicios se estabilicen..."
+          sleep 120
+
+          # 4. Aplicación de Stack de Monitoreo
+          echo "Aplicando configuración de monitoreo (Prometheus, Grafana, ELK)..."
+          
+          kubectl apply -f Proyecto3/monitoring/prometheus/k8s-prometheus.yaml
+          kubectl apply -f Proyecto3/monitoring/grafana/k8s-grafana.yaml
+          kubectl apply -f Proyecto3/monitoring/elk/elasticsearch.yaml
+          kubectl apply -f Proyecto3/monitoring/elk/kibana.yaml
+          kubectl apply -f Proyecto3/monitoring/elk/k8s-fluent-bit.yaml
