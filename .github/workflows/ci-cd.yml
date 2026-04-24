@@ -198,46 +198,30 @@ jobs:
         run: npm audit --audit-level=high || true
         
   build-and-push:
-    name: Build & Push Docker Images
+    name: Build Docker Images
     runs-on: ubuntu-latest
-    needs: [lint, test, security-audit] # Solo construye si pasa la calidad
+    needs: [lint, test, security-audit] # Modificado para esperar a que los 3 jobs terminen
     strategy:
       matrix:
-        service:
-          - frontend
-          - api-gateway
-          - auth-service
-          - catalog-service
-          - orders-service
-          - delivery-service
-          - notification-service
-          - payment-service
-          - fx-service
+        # Incluimos fx-service y frontend que no llevan tests unitarios node necesariamente
+        service: [api-gateway, auth-service, catalog-service, orders-service, delivery-service, notification-service, payment-service, fx-service, frontend]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
+      - uses: actions/checkout@v4
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
+      - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
-      - name: Configure Docker to use Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Build Docker Image
-        # Asume que el Dockerfile está en el directorio del servicio (ej. Proyecto3/frontend/Dockerfile)
-        # Si el frontend está en otra ruta, ajusta el working-directory
-        working-directory: ./Proyecto3/${{ matrix.service }}
-        run: |
-          docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ matrix.service }}:${{ github.sha }} .
-
-      - name: Push Docker Image to Artifact Registry
-        run: |
-          docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ matrix.service }}:${{ github.sha }}
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Proyecto3
+          file: ./Proyecto3/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ matrix.service }}:${{ github.sha }}
 
   deploy:
     name: Deploy to Cloud
