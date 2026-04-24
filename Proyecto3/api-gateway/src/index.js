@@ -14,6 +14,7 @@ const orderRoutes = require('./routes/orders')
 const deliveryRoutes = require('./routes/delivery')
 const fxRoutes = require('./routes/fx')
 const paymentRoutes = require('./routes/payment')
+const observabilityRoutes = require('./routes/observability')
 const errorHandler = require('./middleware/errorHandler')
 const { originGuard } = require('./middleware/originGuard')
 const { createMetricsTracker } = require('./utils/metrics')
@@ -108,6 +109,7 @@ app.use('/api/orders', orderRoutes)
 app.use('/api/delivery', deliveryRoutes)
 app.use('/api/fx', fxRoutes)
 app.use('/api/payments', paymentRoutes)
+app.use('/api/observability', observabilityRoutes)
 
 // 404 handler
 app.use('*', (req, res) => {

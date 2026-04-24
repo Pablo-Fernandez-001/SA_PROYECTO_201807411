@@ -190,6 +190,7 @@ const RegisterUserForm = ({ onClose, onSuccess }) => {
               <option value="ADMIN">Administrador</option>
               <option value="RESTAURANTE">Restaurante</option>
               <option value="REPARTIDOR">Repartidor</option>
+              <option value="GRAPH">Observabilidad</option>
             </select>
             <p className="text-sm text-gray-500 mt-1">
               Selecciona el rol que tendrá el usuario en el sistema

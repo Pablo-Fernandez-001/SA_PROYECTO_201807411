@@ -1,4 +1,5 @@
 const mysql = require('mysql2/promise')
+const bcrypt = require('bcryptjs')
 const logger = require('../utils/logger')
 
 let connection = null
@@ -122,21 +123,51 @@ async function createTables() {
 
 async function seedData() {
   try {
-    // Check if roles exist
-    const [roles] = await connection.execute('SELECT COUNT(*) as count FROM roles')
-    
-    if (roles[0].count === 0) {
-      // Insert default roles
-      await connection.execute(`
-        INSERT INTO roles (name) VALUES 
-        ('ADMIN'), 
-        ('CLIENTE'), 
-        ('RESTAURANTE'), 
-        ('REPARTIDOR')
-      `)
-      
-      logger.info('Default roles seeded successfully')
+    const roles = ['ADMIN', 'CLIENTE', 'RESTAURANTE', 'REPARTIDOR', 'GRAPH']
+
+    for (const role of roles) {
+      await connection.execute(
+        'INSERT IGNORE INTO roles (name) VALUES (?)',
+        [role]
+      )
     }
+
+    const adminPasswordHash = '$2a$12$3StLlQIY/Y7VstL3KAXTVuIa6j7pYRxvET08jYllAxcb/f..BbXGm'
+    const graphPasswordHash = await bcrypt.hash('graph123', 12)
+    const defaultUsers = [
+      { name: 'Administrator', email: 'admin@delivereats.com', password: adminPasswordHash, role: 'ADMIN' },
+      { name: 'Test Cliente', email: 'cliente@test.com', password: adminPasswordHash, role: 'CLIENTE' },
+      { name: 'Test Restaurant', email: 'restaurant@test.com', password: adminPasswordHash, role: 'RESTAURANTE' },
+      { name: 'Test Delivery', email: 'delivery@test.com', password: adminPasswordHash, role: 'REPARTIDOR' },
+      { name: 'graph', email: 'graph@delivereats.com', password: graphPasswordHash, role: 'GRAPH' }
+    ]
+
+    for (const user of defaultUsers) {
+      const [existingUser] = await connection.execute(
+        'SELECT id FROM users WHERE email = ?',
+        [user.email]
+      )
+
+      if (existingUser.length > 0) {
+        continue
+      }
+
+      const [roleRows] = await connection.execute(
+        'SELECT id FROM roles WHERE name = ?',
+        [user.role]
+      )
+
+      if (roleRows.length === 0) {
+        continue
+      }
+
+      await connection.execute(
+        'INSERT INTO users (name, email, password, role_id) VALUES (?, ?, ?, ?)',
+        [user.name, user.email, user.password, roleRows[0].id]
+      )
+    }
+
+    logger.info('Default roles and users seeded successfully')
   } catch (error) {
     logger.error('Error seeding data:', error)
     throw error

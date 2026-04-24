@@ -34,7 +34,8 @@ INSERT INTO roles (name) VALUES
   ('ADMIN'), 
   ('CLIENTE'), 
   ('RESTAURANTE'), 
-  ('REPARTIDOR');
+  ('REPARTIDOR'),
+  ('GRAPH');
 
 -- Insert default users (password: admin123 for all)
 -- Hash generated with bcrypt rounds=12: admin123
@@ -42,4 +43,5 @@ INSERT INTO users (name, email, password, role_id) VALUES
   ('Administrator', 'admin@delivereats.com', '$2a$12$3StLlQIY/Y7VstL3KAXTVuIa6j7pYRxvET08jYllAxcb/f..BbXGm', 1),
   ('Test Cliente', 'cliente@test.com', '$2a$12$3StLlQIY/Y7VstL3KAXTVuIa6j7pYRxvET08jYllAxcb/f..BbXGm', 2),
   ('Test Restaurant', 'restaurant@test.com', '$2a$12$3StLlQIY/Y7VstL3KAXTVuIa6j7pYRxvET08jYllAxcb/f..BbXGm', 3),
-  ('Test Delivery', 'delivery@test.com', '$2a$12$3StLlQIY/Y7VstL3KAXTVuIa6j7pYRxvET08jYllAxcb/f..BbXGm', 4);
+  ('Test Delivery', 'delivery@test.com', '$2a$12$3StLlQIY/Y7VstL3KAXTVuIa6j7pYRxvET08jYllAxcb/f..BbXGm', 4),
+  ('graph', 'graph@delivereats.com', '$2b$12$yp3rRuh2sSxjDzexZQBiIeF8mtMyTqIdc/wK7PWfWNXpyJ1WqTg1K', 5);

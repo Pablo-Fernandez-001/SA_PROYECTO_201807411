@@ -57,7 +57,7 @@ router.post('/admin/register',
     body('name').trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
     body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    body('role').isIn(['CLIENTE', 'ADMIN', 'RESTAURANTE', 'REPARTIDOR']).withMessage('Invalid role')
+    body('role').isIn(['CLIENTE', 'ADMIN', 'RESTAURANTE', 'REPARTIDOR', 'GRAPH']).withMessage('Invalid role')
   ],
   handleValidationErrors,
   async (req, res) => {
@@ -229,7 +229,7 @@ router.put('/users/:id',
 router.put('/users/:id/role',
   authMiddleware,
   [
-    body('role').isIn(['CLIENTE', 'ADMIN', 'RESTAURANTE', 'REPARTIDOR']).withMessage('Invalid role')
+    body('role').isIn(['CLIENTE', 'ADMIN', 'RESTAURANTE', 'REPARTIDOR', 'GRAPH']).withMessage('Invalid role')
   ],
   handleValidationErrors,
   async (req, res) => {

@@ -15,7 +15,8 @@ class Role {
     ADMIN: 'ADMIN',
     CLIENTE: 'CLIENTE',
     RESTAURANTE: 'RESTAURANTE',
-    REPARTIDOR: 'REPARTIDOR'
+    REPARTIDOR: 'REPARTIDOR',
+    GRAPH: 'GRAPH'
   };
 
   /**

@@ -49,10 +49,12 @@ metadata:
   name: kibana
   namespace: delivereats
 spec:
+  type: LoadBalancer
   selector:
     app: kibana
   ports:
-    - port: 5601
+    - name: http
+      port: 5601
       targetPort: 5601
 ---
 apiVersion: batch/v1

@@ -65,6 +65,21 @@ spec:
             configMapKeyRef:
               name: api-gateway-config
               key: DELIVERY_SERVICE_URL
+        - name: GRAFANA_URL
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: GRAFANA_URL
+        - name: KIBANA_URL
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: KIBANA_URL
+        - name: PROMETHEUS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: PROMETHEUS_URL
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:

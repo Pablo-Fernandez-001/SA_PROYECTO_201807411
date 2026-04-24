@@ -71,6 +71,7 @@ export default function Login() {
           <p>Admin: admin@delivereats.com / admin123</p>
           <p>Cliente: cliente@test.com / admin123</p>
           <p>Restaurant: restaurant@test.com / admin123</p>
+          <p>Graph: graph@delivereats.com / graph123</p>
         </div>
       </div>
     </div>

@@ -29,6 +29,10 @@ export default function Home() {
       navigate('/repartidor-dashboard')
       return
     }
+    if (user?.role === 'GRAPH') {
+      navigate('/observability')
+      return
+    }
     
     fetchRestaurants({ silent: false })
   }, [user, navigate])
@@ -95,6 +99,10 @@ export default function Home() {
 
   // Don't render anything if redirecting
   if (user?.role === 'RESTAURANTE') {
+    return null
+  }
+
+  if (user?.role === 'GRAPH') {
     return null
   }
 

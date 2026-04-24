@@ -17,6 +17,25 @@ export default function Navbar() {
     CLIENTE: 'Cliente',
     RESTAURANTE: 'Restaurante',
     REPARTIDOR: 'Repartidor',
+    GRAPH: 'Observabilidad',
+  }
+
+  if (user?.role === 'GRAPH') {
+    return (
+      <nav className="bg-slate-900 text-white shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <Link to="/observability" className="text-2xl font-bold tracking-tight">
+            DeliverEats Graph
+          </Link>
+          <button
+            onClick={handleLogout}
+            className="bg-cyan-500 text-slate-950 px-4 py-2 rounded-lg font-semibold hover:bg-cyan-400 transition"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+    )
   }
 
   return (

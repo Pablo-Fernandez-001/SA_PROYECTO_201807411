@@ -43,6 +43,10 @@ export const authAPI = {
   deleteUser: (id) => api.delete(`/auth/users/${id}`),
 }
 
+export const observabilityAPI = {
+  getLinks: () => api.get('/observability/links'),
+}
+
 // ─── Catalog ─────────────────────────────────────────────────────────────────
 export const catalogAPI = {
   getRestaurants: () => api.get('/catalog/restaurants'),

@@ -147,6 +147,8 @@ const AdminDashboard = () => {
         return 'bg-blue-100 text-blue-800'
       case 'REPARTIDOR':
         return 'bg-yellow-100 text-yellow-800'
+      case 'GRAPH':
+        return 'bg-cyan-100 text-cyan-800'
       default:
         return 'bg-gray-100 text-gray-800'
     }
@@ -174,6 +176,7 @@ const AdminDashboard = () => {
     restaurantes: users.filter(u => u.role === 'RESTAURANTE').length,
     repartidores: users.filter(u => u.role === 'REPARTIDOR').length,
     admins: users.filter(u => u.role === 'ADMIN').length,
+    graph: users.filter(u => u.role === 'GRAPH').length,
     activos: users.filter(u => u.is_active).length,
   }
 
@@ -428,6 +431,7 @@ const AdminDashboard = () => {
                   <option value="ADMIN">Administrador</option>
                   <option value="RESTAURANTE">Restaurante</option>
                   <option value="REPARTIDOR">Repartidor</option>
+                  <option value="GRAPH">Observabilidad</option>
                 </select>
               </div>
 
