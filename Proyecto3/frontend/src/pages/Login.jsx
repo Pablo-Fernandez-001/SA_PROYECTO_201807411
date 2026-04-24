@@ -12,7 +12,10 @@ export default function Login() {
     e.preventDefault()
     clearError()
     const result = await login(email, password)
-    if (result.success) navigate('/')
+    if (result.success) {
+      const currentUser = JSON.parse(localStorage.getItem('user') || 'null')
+      navigate(currentUser?.role === 'GRAPH' ? '/observability' : '/')
+    }
   }
 
   return (

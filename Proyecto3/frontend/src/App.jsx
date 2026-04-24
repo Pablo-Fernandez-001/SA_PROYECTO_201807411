@@ -23,6 +23,20 @@ function ProtectedRoute({ children, roles }) {
   return children
 }
 
+function DefaultRoute() {
+  const { user } = useAuthStore()
+
+  if (!user) {
+    return <Navigate to="/login" />
+  }
+
+  if (user.role === 'GRAPH') {
+    return <Navigate to="/observability" replace />
+  }
+
+  return <Home />
+}
+
 export default function App() {
   const { validateSession } = useAuthStore()
 
@@ -38,7 +52,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+            <Route path="/" element={<DefaultRoute />} />
             <Route path="/restaurant/:id" element={<ProtectedRoute><RestaurantMenu /></ProtectedRoute>} />
             <Route path="/my-orders" element={<ProtectedRoute><MyOrders /></ProtectedRoute>} />
             <Route path="/payment" element={<ProtectedRoute roles={['CLIENTE', 'ADMIN']}><PaymentPage /></ProtectedRoute>} />

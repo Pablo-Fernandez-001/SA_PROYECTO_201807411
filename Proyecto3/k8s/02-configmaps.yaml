@@ -86,9 +86,9 @@ data:
   FX_SERVICE_URL: "fx-service:5000"
   PAYMENT_SERVICE_URL: "payment-service:3006"
   FRONTEND_URL: "https://frontend-681870377764.us-central1.run.app"
-  GRAFANA_URL: "http://GRAFANA_LOADBALANCER_IP:3000"
-  KIBANA_URL: "http://KIBANA_LOADBALANCER_IP:5601"
-  PROMETHEUS_URL: "http://PROMETHEUS_LOADBALANCER_IP:9090"
+  GRAFANA_URL: "http://136.119.108.205:3000"
+  KIBANA_URL: "http://35.202.231.132:5601"
+  PROMETHEUS_URL: "http://34.9.212.147:9090"
 ---
 apiVersion: v1
 kind: ConfigMap
