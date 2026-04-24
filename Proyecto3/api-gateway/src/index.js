@@ -68,6 +68,19 @@ app.use(express.json({ limit: '20mb' }))
 app.use(express.urlencoded({ extended: true, limit: '20mb' }))
 app.use(originGuard)
 app.use(metrics.middleware)
+app.use((req, res, next) => {
+  const startedNs = process.hrtime.bigint()
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - startedNs) / 1e6
+    logger.info('http_request', {
+      method: req.method,
+      path: req.originalUrl.split('?')[0],
+      status: res.statusCode,
+      duration_ms: Number(durationMs.toFixed(2))
+    })
+  })
+  next()
+})
 
 // Health check - both routes for compatibility
 app.get('/health', (req, res) => {

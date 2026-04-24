@@ -19,11 +19,37 @@ const grpcCounters = {
   GetAllUsers: 0,
   UpdateUserRole: 0
 }
+const grpcDuration = {}
+const grpcDurationBuckets = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]
+
+function createGrpcDurationState() {
+  return {
+    count: 0,
+    sum: 0,
+    buckets: grpcDurationBuckets.map(() => 0)
+  }
+}
 
 function withGrpcMetric(methodName, handler) {
   return (call, callback) => {
+    const startedNs = process.hrtime.bigint()
     grpcCounters[methodName] = (grpcCounters[methodName] || 0) + 1
-    return handler(call, callback)
+
+    const wrappedCallback = (error, response) => {
+      const durationSeconds = Number(process.hrtime.bigint() - startedNs) / 1e9
+      const current = grpcDuration[methodName] || createGrpcDurationState()
+      current.count += 1
+      current.sum += durationSeconds
+      for (let i = 0; i < grpcDurationBuckets.length; i += 1) {
+        if (durationSeconds <= grpcDurationBuckets[i]) {
+          current.buckets[i] += 1
+        }
+      }
+      grpcDuration[methodName] = current
+      callback(error, response)
+    }
+
+    return handler(call, wrappedCallback)
   }
 }
 
@@ -78,6 +104,17 @@ function startMetricsServer() {
 
     Object.entries(grpcCounters).forEach(([method, count]) => {
       lines.push(`grpc_requests_total{service="auth-service",method="${method}"} ${count}`)
+    })
+
+    lines.push('# HELP grpc_request_duration_seconds gRPC request duration in seconds')
+    lines.push('# TYPE grpc_request_duration_seconds histogram')
+    Object.entries(grpcDuration).forEach(([method, metric]) => {
+      grpcDurationBuckets.forEach((le, index) => {
+        lines.push(`grpc_request_duration_seconds_bucket{service="auth-service",method="${method}",le="${le}"} ${metric.buckets[index]}`)
+      })
+      lines.push(`grpc_request_duration_seconds_bucket{service="auth-service",method="${method}",le="+Inf"} ${metric.count}`)
+      lines.push(`grpc_request_duration_seconds_sum{service="auth-service",method="${method}"} ${metric.sum}`)
+      lines.push(`grpc_request_duration_seconds_count{service="auth-service",method="${method}"} ${metric.count}`)
     })
 
     res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' })

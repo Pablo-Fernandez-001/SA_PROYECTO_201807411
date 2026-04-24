@@ -54,3 +54,327 @@ spec:
   ports:
     - port: 5601
       targetPort: 5601
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kibana-observability-bootstrap
+  namespace: delivereats
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup-kibana
+          image: node:20-alpine
+          command:
+            - node
+            - -e
+            - |
+              const kibanaUrl = "http://kibana.delivereats.svc.cluster.local:5601";
+              const dataViewId = "delivereats-logs";
+              const dashboardId = "delivereats-logs-operations";
+              const indexRefName = "kibanaSavedObjectMeta.searchSourceJSON.index";
+              const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+              async function request(path, options = {}) {
+                const response = await fetch(`${kibanaUrl}${path}`, {
+                  ...options,
+                  headers: {
+                    "content-type": "application/json",
+                    "kbn-xsrf": "true",
+                    ...(options.headers || {})
+                  }
+                });
+                const text = await response.text();
+                if (!response.ok) {
+                  const error = new Error(`${options.method || "GET"} ${path} -> ${response.status}: ${text}`);
+                  error.status = response.status;
+                  throw error;
+                }
+                return text ? JSON.parse(text) : {};
+              }
+
+              async function waitForKibana() {
+                for (let attempt = 1; attempt <= 60; attempt += 1) {
+                  try {
+                    await request("/api/status");
+                    return;
+                  } catch (error) {
+                    console.log(`waiting for Kibana (${attempt}/60)`);
+                    await sleep(5000);
+                  }
+                }
+                throw new Error("Kibana did not become ready");
+              }
+
+              async function ensureDataView() {
+                try {
+                  await request(`/api/data_views/data_view/${dataViewId}`);
+                  console.log("Data view already exists");
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  await request("/api/data_views/data_view", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      data_view: {
+                        id: dataViewId,
+                        title: "delivereats-logs-*",
+                        timeFieldName: "@timestamp"
+                      }
+                    })
+                  });
+                  console.log("Data view created");
+                }
+              }
+
+              function searchSource(query = { query: "", language: "kuery" }) {
+                return JSON.stringify({
+                  query,
+                  filter: [],
+                  indexRefName
+                });
+              }
+
+              function visualizationAttrs(title, type, visState, query) {
+                return {
+                  title,
+                  description: "",
+                  visState: JSON.stringify({
+                    title,
+                    type,
+                    ...visState
+                  }),
+                  uiStateJSON: "{}",
+                  kibanaSavedObjectMeta: {
+                    searchSourceJSON: searchSource(query)
+                  }
+                };
+              }
+
+              const histogramParams = {
+                type: "histogram",
+                grid: { categoryLines: false },
+                categoryAxes: [{
+                  id: "CategoryAxis-1",
+                  type: "category",
+                  position: "bottom",
+                  show: true,
+                  scale: { type: "linear" },
+                  labels: { show: true, truncate: 100 },
+                  title: {}
+                }],
+                valueAxes: [{
+                  id: "ValueAxis-1",
+                  name: "LeftAxis-1",
+                  type: "value",
+                  position: "left",
+                  show: true,
+                  scale: { type: "linear", mode: "normal" },
+                  labels: { show: true, rotate: 0, filter: false, truncate: 100 },
+                  title: { text: "Count" }
+                }],
+                seriesParams: [{
+                  show: true,
+                  type: "histogram",
+                  mode: "normal",
+                  data: { label: "Count", id: "1" },
+                  valueAxis: "ValueAxis-1",
+                  drawLinesBetweenPoints: true,
+                  showCircles: true
+                }],
+                addTooltip: true,
+                addLegend: true,
+                legendPosition: "right",
+                times: [],
+                addTimeMarker: false
+              };
+
+              const visualizations = [
+                {
+                  id: "delivereats-logs-over-time",
+                  attrs: visualizationAttrs("Logs por minuto", "histogram", {
+                    params: histogramParams,
+                    aggs: [
+                      { id: "1", enabled: true, type: "count", schema: "metric", params: {} },
+                      {
+                        id: "2",
+                        enabled: true,
+                        type: "date_histogram",
+                        schema: "segment",
+                        params: {
+                          field: "@timestamp",
+                          timeRange: { from: "now-15m", to: "now" },
+                          useNormalizedEsInterval: true,
+                          interval: "auto",
+                          min_doc_count: 1
+                        }
+                      }
+                    ]
+                  })
+                },
+                {
+                  id: "delivereats-errors-by-service",
+                  attrs: visualizationAttrs("Errores por servicio", "histogram", {
+                    params: histogramParams,
+                    aggs: [
+                      { id: "1", enabled: true, type: "count", schema: "metric", params: {} },
+                      {
+                        id: "2",
+                        enabled: true,
+                        type: "terms",
+                        schema: "segment",
+                        params: {
+                          field: "service.keyword",
+                          orderBy: "1",
+                          order: "desc",
+                          size: 10,
+                          otherBucket: false,
+                          missingBucket: true
+                        }
+                      }
+                    ]
+                  }, {
+                    query: "level:error or stream:stderr",
+                    language: "kuery"
+                  })
+                },
+                {
+                  id: "delivereats-log-levels",
+                  attrs: visualizationAttrs("Distribucion de niveles", "pie", {
+                    params: {
+                      type: "pie",
+                      addTooltip: true,
+                      addLegend: true,
+                      legendPosition: "right",
+                      isDonut: true,
+                      labels: { show: false }
+                    },
+                    aggs: [
+                      { id: "1", enabled: true, type: "count", schema: "metric", params: {} },
+                      {
+                        id: "2",
+                        enabled: true,
+                        type: "terms",
+                        schema: "segment",
+                        params: {
+                          field: "level.keyword",
+                          orderBy: "1",
+                          order: "desc",
+                          size: 6,
+                          otherBucket: false,
+                          missingBucket: true
+                        }
+                      }
+                    ]
+                  })
+                },
+                {
+                  id: "delivereats-slow-http-requests",
+                  attrs: visualizationAttrs("Requests lentos", "metric", {
+                    params: {
+                      addTooltip: true,
+                      addLegend: false,
+                      type: "metric",
+                      metric: {
+                        percentageMode: false,
+                        useRanges: false,
+                        colorSchema: "Yellow to Red",
+                        metricColorMode: "None",
+                        colorsRange: [{ from: 0, to: 5000 }],
+                        labels: { show: true },
+                        invertColors: false,
+                        style: {
+                          bgFill: "#000",
+                          bgColor: false,
+                          labelColor: false,
+                          subText: "duration_ms >= 500",
+                          fontSize: 56
+                        }
+                      }
+                    },
+                    aggs: [
+                      { id: "1", enabled: true, type: "count", schema: "metric", params: {} }
+                    ]
+                  }, {
+                    query: "message:http_request and duration_ms >= 500",
+                    language: "kuery"
+                  })
+                }
+              ];
+
+              async function saveVisualization({ id, attrs }) {
+                await request(`/api/saved_objects/visualization/${id}?overwrite=true`, {
+                  method: "POST",
+                  body: JSON.stringify({
+                    attributes: attrs,
+                    references: [{ name: indexRefName, type: "index-pattern", id: dataViewId }]
+                  })
+                });
+              }
+
+              async function saveDashboard() {
+                const panels = visualizations.map((item, index) => ({
+                  version: "8.14.1",
+                  type: "visualization",
+                  gridData: {
+                    x: index % 2 === 0 ? 0 : 24,
+                    y: index < 2 ? 0 : 15,
+                    w: 24,
+                    h: 15,
+                    i: `${index + 1}`
+                  },
+                  panelIndex: `${index + 1}`,
+                  embeddableConfig: {},
+                  panelRefName: `panel_${index}`
+                }));
+
+                await request(`/api/saved_objects/dashboard/${dashboardId}?overwrite=true`, {
+                  method: "POST",
+                  body: JSON.stringify({
+                    attributes: {
+                      title: "DeliverEats - Logs Operations",
+                      description: "Dashboard inicial de logs para errores, volumen y requests lentos en Fase 3.",
+                      hits: 0,
+                      panelsJSON: JSON.stringify(panels),
+                      optionsJSON: JSON.stringify({ useMargins: true, syncColors: false, hidePanelTitles: false }),
+                      version: 1,
+                      timeRestore: true,
+                      timeFrom: "now-15m",
+                      timeTo: "now",
+                      refreshInterval: { pause: false, value: 10000 },
+                      kibanaSavedObjectMeta: {
+                        searchSourceJSON: JSON.stringify({
+                          query: { query: "", language: "kuery" },
+                          filter: []
+                        })
+                      }
+                    },
+                    references: visualizations.map((item, index) => ({
+                      name: `panel_${index}`,
+                      type: "visualization",
+                      id: item.id
+                    }))
+                  })
+                });
+              }
+
+              async function configureDefaults() {
+                await request("/api/kibana/settings/defaultIndex", {
+                  method: "POST",
+                  body: JSON.stringify({ value: dataViewId })
+                });
+                await request("/api/kibana/settings/defaultRoute", {
+                  method: "POST",
+                  body: JSON.stringify({ value: `/app/dashboards#/view/${dashboardId}` })
+                });
+              }
+
+              await waitForKibana();
+              await ensureDataView();
+              for (const visualization of visualizations) {
+                await saveVisualization(visualization);
+              }
+              await saveDashboard();
+              await configureDefaults();

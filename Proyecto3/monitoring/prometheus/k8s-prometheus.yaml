@@ -8,18 +8,15 @@ data:
     global:
       scrape_interval: 15s
       evaluation_interval: 15s
+    rule_files:
+      - /etc/prometheus/rules/*.yml
 
     scrape_configs:
       - job_name: prometheus
         static_configs:
           - targets: ["localhost:9090"]
 
-      - job_name: delivereats-api-gateway
-        metrics_path: /metrics
-        static_configs:
-          - targets: ["api-gateway:80"]
-
-      - job_name: delivereats-k8s-services
+      - job_name: delivereats-services
         kubernetes_sd_configs:
           - role: endpoints
             namespaces:
@@ -28,23 +25,100 @@ data:
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
             action: keep
             regex: "true"
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: replace
+            target_label: __scheme__
+            regex: (https?)
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
             action: replace
             target_label: __metrics_path__
             regex: (.+)
           - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
             action: replace
+            target_label: __address__
             regex: ([^:]+)(?::\d+)?;(\d+)
             replacement: $1:$2
-            target_label: __address__
-          - action: labelmap
-            regex: __meta_kubernetes_service_label_(.+)
           - source_labels: [__meta_kubernetes_namespace]
             action: replace
-            target_label: kubernetes_namespace
+            target_label: namespace
           - source_labels: [__meta_kubernetes_service_name]
             action: replace
-            target_label: kubernetes_name
+            target_label: kubernetes_service
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: service
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: delivereats
+data:
+  alerts.yml: |
+    groups:
+      - name: delivereats-alerts
+        rules:
+          - alert: DeliverEatsServiceDown
+            expr: min_over_time(up{job="delivereats-services"}[2m]) == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Servicio fuera de línea"
+              description: "El servicio {{ $labels.service }} no responde en Prometheus desde hace más de 2 minutos."
+
+          - alert: HighHttp5xxRate
+            expr: |
+              (
+                sum by(service) (rate(http_requests_total{status=~"5.."}[5m]))
+                /
+                clamp_min(sum by(service) (rate(http_requests_total[5m])), 0.001)
+              ) > 0.01
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Error rate HTTP elevado"
+              description: "El servicio {{ $labels.service }} supera 1% de respuestas 5xx durante 5 minutos."
+
+          - alert: HighReadP95Latency
+            expr: |
+              histogram_quantile(
+                0.95,
+                sum by(le, service) (rate(http_request_duration_seconds_bucket{method="GET"}[5m]))
+              ) > 0.5
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Latencia p95 alta en lecturas"
+              description: "El servicio {{ $labels.service }} supera 500 ms p95 en operaciones GET durante 5 minutos."
+
+          - alert: HighWriteP95Latency
+            expr: |
+              histogram_quantile(
+                0.95,
+                sum by(le, service) (rate(http_request_duration_seconds_bucket{method=~"POST|PUT|PATCH|DELETE"}[5m]))
+              ) > 1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Latencia p95 alta en escrituras"
+              description: "El servicio {{ $labels.service }} supera 1 s p95 en operaciones de escritura durante 5 minutos."
+
+          - alert: HighAuthGrpcP95Latency
+            expr: |
+              histogram_quantile(
+                0.95,
+                sum by(le, service) (rate(grpc_request_duration_seconds_bucket{service="auth-service"}[5m]))
+              ) > 0.1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Latencia gRPC alta en auth-service"
+              description: "auth-service supera 100 ms p95 en llamadas gRPC durante 5 minutos."
 
 ---
 apiVersion: v1
@@ -52,6 +126,30 @@ kind: ServiceAccount
 metadata:
   name: prometheus
   namespace: delivereats
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-sd-reader
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-sd-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-sd-reader
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: delivereats
 
 ---
 apiVersion: v1
@@ -81,7 +179,7 @@ spec:
       labels:
         app: prometheus
     spec:
-      securityContext:      # <--- ¡AGREGA ESTE BLOQUE!
+      securityContext:
         fsGroup: 65534
         runAsUser: 65534
       serviceAccountName: prometheus
@@ -116,12 +214,17 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
             - name: data
               mountPath: /prometheus
       volumes:
         - name: config
           configMap:
             name: prometheus-config
+        - name: rules
+          configMap:
+            name: prometheus-rules
         - name: data
           persistentVolumeClaim:
             claimName: prometheus-pvc
@@ -134,9 +237,72 @@ metadata:
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
 spec:
   selector:
     app: prometheus
   ports:
     - port: 9090
       targetPort: 9090
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: delivereats
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.8.1
+          args:
+            - --path.rootfs=/host
+          ports:
+            - containerPort: 9100
+              hostPort: 9100
+              name: metrics
+          volumeMounts:
+            - name: root
+              mountPath: /host
+              readOnly: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+      volumes:
+        - name: root
+          hostPath:
+            path: /
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: delivereats
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9100"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: node-exporter
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100

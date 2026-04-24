@@ -1,4 +1,32 @@
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: delivereats
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit-read
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit-read-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit-read
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: delivereats
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: fluent-bit-config
@@ -6,32 +34,49 @@ metadata:
 data:
   fluent-bit.conf: |
     [SERVICE]
-        Flush 1
-        Daemon Off
-        Log_Level info
+        Flush              1
+        Daemon             Off
+        Log_Level          info
+        Parsers_File       parsers.conf
 
     [INPUT]
-        Name tail
-        Path /var/log/containers/*.log
-        Parser cri
-        Tag kube.*
-        Mem_Buf_Limit 50MB
-        Skip_Long_Lines On
+        Name               tail
+        Path               /var/log/containers/*.log
+        Parser             cri
+        Tag                kube.*
+        Refresh_Interval   5
+        Mem_Buf_Limit      50MB
+        Skip_Long_Lines    On
 
     [FILTER]
-        Name kubernetes
-        Match kube.*
-        Merge_Log On
-        Keep_Log Off
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Merge_Log           On
+        Merge_Log_Key       log_processed
+        Keep_Log            Off
+        K8S-Logging.Parser  On
+        Labels              On
+        Annotations         Off
 
     [OUTPUT]
-        Name es
-        Match kube.*
-        Host elasticsearch
-        Port 9200
-        Index delivereats-logs
-        Logstash_Format On
-        Retry_Limit False
+        Name                es
+        Match               kube.*
+        Host                elasticsearch
+        Port                9200
+        Logstash_Format     On
+        Logstash_Prefix     delivereats-logs
+        Retry_Limit         False
+        Suppress_Type_Name  On
+        Replace_Dots        On
+  parsers.conf: |
+    [PARSER]
+        Name        cri
+        Format      regex
+        Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -47,7 +92,7 @@ spec:
       labels:
         app: fluent-bit
     spec:
-      serviceAccountName: default
+      serviceAccountName: fluent-bit
       tolerations:
         - operator: Exists
       containers:
@@ -60,6 +105,9 @@ spec:
             - name: config
               mountPath: /fluent-bit/etc/fluent-bit.conf
               subPath: fluent-bit.conf
+            - name: config
+              mountPath: /fluent-bit/etc/parsers.conf
+              subPath: parsers.conf
             - name: varlog
               mountPath: /var/log
             - name: containers

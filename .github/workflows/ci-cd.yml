@@ -1,21 +1,29 @@
-name: DeliverEats Phase 3 Full CI/CD
+name: DeliverEats CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches:
+      - main
+      - develop
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - develop
   workflow_dispatch:
 
 env:
-  GCP_PROJECT_ID: proyecto-sa-492706 
-  GKE_CLUSTER: proyecto-iac-gke      
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  GCP_PROJECT_ID: proyecto-sa-492706
+  GKE_CLUSTER: proyecto-iac-gke
   GKE_ZONE: us-central1-a
+  GCP_REGION: us-central1
   REGISTRY: us-central1-docker.pkg.dev
   ARTIFACT_REPOSITORY: delivereats
+  FRONTEND_SERVICE: frontend
 
 jobs:
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 1. VALIDACIÓN IaC (Terraform & Ansible)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   phase3-validation:
     name: Phase3 Terraform + Ansible + Smoke + Locust
     runs-on: ubuntu-latest
@@ -45,7 +53,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install Ansible and Locust
         run: |
@@ -90,48 +98,109 @@ jobs:
             Proyecto3/evidence/dashboards/*
             Proyecto3/evidence/screenshots/*
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 2. LINT, TEST & SECURITY (Calidad de Código)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  quality-gate:
-    name: Lint, Test & Security
+  lint:
+    name: Code Linting
     runs-on: ubuntu-latest
     needs: phase3-validation
     strategy:
       matrix:
-        service: [api-gateway, auth-service, catalog-service, orders-service, delivery-service, notification-service, payment-service]
+        service:
+          - api-gateway
+          - auth-service
+          - catalog-service
+          - orders-service
+          - delivery-service
+          - notification-service
+          - payment-service
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: './Proyecto3/${{ matrix.service }}/package-lock.json'
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ./Proyecto3/${{ matrix.service }}/package-lock.json
 
       - name: Install dependencies
         working-directory: ./Proyecto3/${{ matrix.service }}
-        run: npm ci
+        run: npm ci || npm install
 
-      - name: Run Lint
+      - name: Run lint
         working-directory: ./Proyecto3/${{ matrix.service }}
         run: npm run lint || echo "No lint script found"
 
-      - name: Run Unit Tests
+  test:
+    name: Unit Testing
+    runs-on: ubuntu-latest
+    needs: phase3-validation
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - catalog-service
+          - orders-service
+          - delivery-service
+          - notification-service
+          - payment-service
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ./Proyecto3/${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./Proyecto3/${{ matrix.service }}
+        run: npm ci || npm install
+
+      - name: Run unit tests
         working-directory: ./Proyecto3/${{ matrix.service }}
         run: npm test || echo "No tests found"
 
-      - name: Security Scan (npm audit)
+  security-audit:
+    name: Security & NPM Audit
+    runs-on: ubuntu-latest
+    needs: phase3-validation
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - catalog-service
+          - orders-service
+          - delivery-service
+          - notification-service
+          - payment-service
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ./Proyecto3/${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./Proyecto3/${{ matrix.service }}
+        run: npm ci || npm install
+
+      - name: Run npm audit
         working-directory: ./Proyecto3/${{ matrix.service }}
         run: npm audit --audit-level=high || true
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 3. BUILD & PUSH (Docker)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  build:
+        
+  build-and-push:
     name: Build Docker Images
     runs-on: ubuntu-latest
-    needs: quality-gate
+    needs: [lint, test, security-audit] # Modificado para esperar a que los 3 jobs terminen
     strategy:
       matrix:
         # Incluimos fx-service y frontend que no llevan tests unitarios node necesariamente
@@ -154,21 +223,18 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ matrix.service }}:${{ github.sha }}
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 4. DEPLOY (GKE + Cloud Run)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   deploy:
     name: Deploy to Cloud
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build-and-push] # Modificado para esperar a que los 3 jobs terminen
     steps:
       - uses: actions/checkout@v4
+      
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # Cloud Run para el Frontend (Exclusivo Fase 3) 
       - name: Deploy Frontend to Cloud Run
         run: |
           gcloud run deploy frontend \
@@ -177,7 +243,6 @@ jobs:
             --platform managed \
             --allow-unauthenticated
 
-      # GKE para Microservicios [cite: 68, 82]
       - name: Get GKE Credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
@@ -186,26 +251,55 @@ jobs:
 
       - name: Update GKE Deployments
         run: |
-          kubectl delete -f Proyecto3/k8s/ -n delivereats --ignore-not-found=true || true
           kubectl apply -f Proyecto3/k8s/ -n delivereats
-
-          kubectl set image deployment/api-gateway api-gateway=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/api-gateway:${{ github.sha }} -n delivereats          
-          kubectl set image deployment/auth-service auth-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/auth-service:${{ github.sha }} -n delivereats
-          kubectl set image deployment/catalog-service catalog-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/catalog-service:${{ github.sha }} -n delivereats
-          kubectl set image deployment/orders-service orders-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/orders-service:${{ github.sha }} -n delivereats
-          kubectl set image deployment/delivery-service delivery-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/delivery-service:${{ github.sha }} -n delivereats
-          kubectl set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/notification-service:${{ github.sha }} -n delivereats
-          kubectl set image deployment/payment-service payment-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/payment-service:${{ github.sha }} -n delivereats
-          kubectl set image deployment/fx-service fx-service=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/fx-service:${{ github.sha }} -n delivereats
-
-          echo "Esperando 2 minutos para que los servicios se estabilicen..."
+          
+          # Actualización de imágenes
+          SERVICES=(api-gateway auth-service catalog-service orders-service delivery-service notification-service payment-service fx-service)
+          for svc in "${SERVICES[@]}"; do
+            kubectl set image deployment/$svc $svc=${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/$svc:${{ github.sha }} -n delivereats
+          done
+          
+          echo "Esperando a que los servicios se estabilicen..."
           sleep 120
 
-          # 4. Aplicación de Stack de Monitoreo
-          echo "Aplicando configuración de monitoreo (Prometheus, Grafana, ELK)..."
-          
+      - name: Apply monitoring stack
+        run: |
           kubectl apply -f Proyecto3/monitoring/prometheus/k8s-prometheus.yaml
           kubectl apply -f Proyecto3/monitoring/grafana/k8s-grafana.yaml
           kubectl apply -f Proyecto3/monitoring/elk/elasticsearch.yaml
           kubectl apply -f Proyecto3/monitoring/elk/kibana.yaml
           kubectl apply -f Proyecto3/monitoring/elk/k8s-fluent-bit.yaml
+
+  rollback:
+    name: Rollback GKE
+    runs-on: ubuntu-latest
+    if: |
+      always() && 
+      (contains(needs.deploy.result, 'failure') || github.event_name == 'workflow_dispatch')
+    needs: deploy
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Rollback all deployments
+        run: |
+          SERVICES=(api-gateway auth-service catalog-service orders-service delivery-service notification-service payment-service fx-service)
+          for svc in "${SERVICES[@]}"; do
+            echo "Rolling back $svc..."
+            kubectl rollout undo deployment/$svc -n delivereats
+          done
+
+      - name: Verify rollback status
+        run: kubectl get pods -n delivereats
