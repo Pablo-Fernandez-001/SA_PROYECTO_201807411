@@ -265,23 +265,31 @@ jobs:
   deploy:
     name: Deploy to Cloud
     runs-on: ubuntu-latest
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy'
+    if: always()
     needs: [build-and-push]
     steps:
+      - name: Skip deploy in rollback mode
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'rollback'
+        run: echo "Rollback mode selected. Deploy job completes as no-op so rollback can run at the end."
+
       - name: Checkout code
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy') && needs.build-and-push.result == 'success'
         uses: actions/checkout@v4
 
       - name: Authenticate to GCP
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy') && needs.build-and-push.result == 'success'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup gcloud
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy') && needs.build-and-push.result == 'success'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Deploy frontend to Cloud Run
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy') && needs.build-and-push.result == 'success'
         run: |
           gcloud run deploy ${{ env.FRONTEND_SERVICE }} \
             --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/frontend:${{ github.sha }} \
@@ -291,6 +299,7 @@ jobs:
             --project ${{ env.GCP_PROJECT_ID }}
 
       - name: Get GKE credentials
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy') && needs.build-and-push.result == 'success'
         uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ env.GKE_CLUSTER }}
@@ -298,6 +307,7 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Apply manifests and update images
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy') && needs.build-and-push.result == 'success'
         shell: bash
         run: |
           kubectl apply -f Proyecto3/k8s/ -n ${{ env.K8S_NAMESPACE }}
@@ -307,6 +317,7 @@ jobs:
           done
 
       - name: Wait for deployments
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy') && needs.build-and-push.result == 'success'
         shell: bash
         run: |
           for svc in ${{ env.K8S_DEPLOYMENTS }}; do
@@ -314,6 +325,7 @@ jobs:
           done
 
       - name: Apply monitoring stack
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy') && needs.build-and-push.result == 'success'
         run: |
           kubectl apply -f Proyecto3/monitoring/prometheus/k8s-prometheus.yaml
           kubectl apply -f Proyecto3/monitoring/grafana/k8s-grafana.yaml
@@ -322,82 +334,22 @@ jobs:
           kubectl apply -f Proyecto3/monitoring/elk/k8s-fluent-bit.yaml
 
       - name: Verify deployment
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.operation == 'deploy') && needs.build-and-push.result == 'success'
         run: |
           kubectl get pods -n ${{ env.K8S_NAMESPACE }}
           kubectl get svc -n ${{ env.K8S_NAMESPACE }}
 
-  rollback-on-failure:
-    name: Rollback GKE (Auto)
-    runs-on: ubuntu-latest
-    if: always() && github.event_name != 'workflow_dispatch' && needs.deploy.result == 'failure'
-    needs:
-      - deploy
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-
-      - name: Get GKE credentials
-        uses: google-github-actions/get-gke-credentials@v2
-        with:
-          cluster_name: ${{ env.GKE_CLUSTER }}
-          location: ${{ env.GKE_ZONE }}
-          project_id: ${{ env.GCP_PROJECT_ID }}
-
-      - name: Show rollout history before rollback
-        shell: bash
-        run: |
-          for svc in ${{ env.K8S_DEPLOYMENTS }}; do
-            echo "=== History for $svc ==="
-            kubectl rollout history deployment/$svc -n ${{ env.K8S_NAMESPACE }} || true
-          done
-
-      - name: Rollback Kubernetes deployments
-        shell: bash
-        run: |
-          REVISION="${{ github.event.inputs.rollback_revision }}"
-          for svc in ${{ env.K8S_DEPLOYMENTS }}; do
-            echo "Rolling back $svc"
-            if [[ -n "$REVISION" ]]; then
-              kubectl rollout undo deployment/$svc -n ${{ env.K8S_NAMESPACE }} --to-revision="$REVISION"
-            else
-              kubectl rollout undo deployment/$svc -n ${{ env.K8S_NAMESPACE }}
-            fi
-          done
-
-      - name: Wait for rollback completion
-        shell: bash
-        run: |
-          for svc in ${{ env.K8S_DEPLOYMENTS }}; do
-            kubectl rollout status deployment/$svc -n ${{ env.K8S_NAMESPACE }} --timeout=12m
-          done
-
-      - name: Rollback Cloud Run frontend traffic
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.rollback_frontend_revision != ''
-        run: |
-          gcloud run services update-traffic ${{ env.FRONTEND_SERVICE }} \
-            --region ${{ env.GCP_REGION }} \
-            --to-revisions ${{ github.event.inputs.rollback_frontend_revision }}=100 \
-            --project ${{ env.GCP_PROJECT_ID }}
-
-      - name: Verify rollback
-        run: |
-          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
-          kubectl get rs -n ${{ env.K8S_NAMESPACE }}
-
   rollback:
     name: Rollback GKE
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'rollback'
+    if: |
+      always() &&
+      (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'rollback') ||
+        (github.event_name != 'workflow_dispatch' && needs.deploy.result == 'failure')
+      )
+    needs:
+      - deploy
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
