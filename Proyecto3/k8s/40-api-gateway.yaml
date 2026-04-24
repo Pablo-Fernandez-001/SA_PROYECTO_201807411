@@ -110,6 +110,10 @@ kind: Service
 metadata:
   name: api-gateway
   namespace: delivereats
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: "80"
 spec:
   type: LoadBalancer
   loadBalancerIP: 34.67.27.144  # <--- Debe ir aquí, al nivel de spec

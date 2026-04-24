@@ -106,6 +106,10 @@ kind: Service
 metadata:
   name: catalog-service
   namespace: delivereats
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: "3002"
 spec:
   selector:
     app: catalog-service
