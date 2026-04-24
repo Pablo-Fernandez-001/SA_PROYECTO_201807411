@@ -242,7 +242,7 @@ jobs:
   deploy:
     name: Deploy to Cloud
     runs-on: ubuntu-latest
-    needs: [lint, test, security-audit] # Modificado para esperar a que los 3 jobs terminen
+    needs: [build-and-push] # Modificado para esperar a que los 3 jobs terminen
     steps:
       - uses: actions/checkout@v4
       
